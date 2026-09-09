@@ -6,6 +6,7 @@ import { createEventSink } from './core/events/sink.js';
 import type { EventSink } from './core/events/types.js';
 import { SessionService } from './core/learning/sessionService.js';
 import { ReminderService } from './core/reminders/reminderService.js';
+import { StatsService } from './core/stats/statsService.js';
 import { StreakManager } from './core/streak/streakManager.js';
 import { VocabularyService } from './core/vocabulary/vocabularyService.js';
 import { cryptoRng, type Rng } from './core/random.js';
@@ -25,6 +26,7 @@ export interface Services {
   shop: ShopService;
   reminders: ReminderService;
   vocabulary: VocabularyService;
+  stats: StatsService;
   admin: AdminService;
   clock: Clock;
   rng: Rng;
@@ -50,6 +52,7 @@ export function createServices(overrides: Partial<Services> = {}): Services {
     shop: overrides.shop ?? new ShopService({ prisma: client, config, clock }),
     reminders: overrides.reminders ?? new ReminderService({ prisma: client, content }),
     vocabulary: overrides.vocabulary ?? new VocabularyService(client),
+    stats: overrides.stats ?? new StatsService({ prisma: client, clock }),
     admin: overrides.admin ?? new AdminService(client),
     clock,
     rng,

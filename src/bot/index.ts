@@ -11,6 +11,7 @@ import { showMainMenu } from './screens/menu.js';
 import { activateEarlyStreak } from './screens/completion.js';
 import { handlePurchase, showShop } from './screens/shop.js';
 import { setReminderHour, showSettings } from './screens/settings.js';
+import { showStats } from './screens/stats.js';
 import {
   deactivateCategory,
   deactivateWord,
@@ -172,6 +173,11 @@ export function createBot(services: Services): Bot<AppContext> {
   bot.callbackQuery(CALLBACK.streakEarlyActivate, async (ctx) => {
     await ctx.answerCallbackQuery();
     await activateEarlyStreak(ctx);
+  });
+
+  bot.callbackQuery(CALLBACK.menuStats, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await showStats(ctx);
   });
 
   bot.callbackQuery(CALLBACK.menuSettings, async (ctx) => {

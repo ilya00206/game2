@@ -4,6 +4,7 @@ export const CALLBACK = {
   menuRoot: 'menu:root',
   menuLearn: 'menu:learn',
   menuAddWord: 'menu:add_word',
+  menuStats: 'menu:stats',
   menuSettings: 'menu:settings',
   menuShop: 'menu:shop',
   menuAdmin: 'menu:admin',
@@ -43,7 +44,9 @@ export function mainMenuKeyboard(isAdmin: boolean): InlineKeyboard {
     .row()
     .text('➕ Добавить слово', CALLBACK.menuAddWord)
     .row()
-    .text('🛍️ Магазин', CALLBACK.menuShop)
+    .text('� Статистика', CALLBACK.menuStats)
+    .row()
+    .text('�🛍️ Магазин', CALLBACK.menuShop)
     .text('⚙️ Настройки', CALLBACK.menuSettings);
 
   if (isAdmin) {
