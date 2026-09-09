@@ -44,9 +44,9 @@ export function mainMenuKeyboard(isAdmin: boolean): InlineKeyboard {
     .row()
     .text('➕ Добавить слово', CALLBACK.menuAddWord)
     .row()
-    .text('� Статистика', CALLBACK.menuStats)
+    .text('📊 Статистика', CALLBACK.menuStats)
     .row()
-    .text('�🛍️ Магазин', CALLBACK.menuShop)
+    .text('🛍️ Магазин', CALLBACK.menuShop)
     .text('⚙️ Настройки', CALLBACK.menuSettings);
 
   if (isAdmin) {
