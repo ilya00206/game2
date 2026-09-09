@@ -1,0 +1,327 @@
+// Prisma-схема для SQLite.
+// ВАЖНО: provider "sqlite" не поддерживает Prisma enum и скалярный тип Json,
+// поэтому статусы/типы хранятся как String, а options — как JSON-строка.
+// Допустимые значения задаются TS-типами и проверяются Zod (src/core/*/schemas.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id              Int      @id @default(autoincrement())
+  telegramId      BigInt   @unique
+  currencyBalance Int      @default(0)
+  currentStreak   Int      @default(0)
+  maxStreak       Int      @default(0)
+  shields         Int      @default(0)
+  reminderHour    Int      @default(10) // 0..23, минуты всегда :00
+  timezone        String   @default("Europe/Minsk") // IANA timezone
+  createdAt       DateTime @default(now())
+
+  categories       Category[]
+  words            Word[]
+  userWords        UserWord[]
+  sessions         Session[]
+  days             UserDay[]
+  reminders        ReminderDelivery[]
+  events           Event[]
+  purchases        Purchase[]
+  transactions     CurrencyTransaction[]
+  adminAdjustments AdminAdjustment[]
+  adminMessages    AdminMessage[]
+  contentStates    UserContentState[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  ownerId   Int? // null = системная
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  words        Word[]
+  sessions     Session[]
+  sessionCards SessionCard[]
+
+  @@unique([name, ownerId])
+  @@index([ownerId, isActive])
+}
+
+model Word {
+  id            Int      @id @default(autoincrement())
+  categoryId    Int
+  polish        String
+  russian       String
+  transcription String?
+  example       String?
+  ownerId       Int?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  userWords    UserWord[]
+  sessionCards SessionCard[]
+  wordOfDays   WordOfDay[]
+
+  @@unique([categoryId, polish, ownerId])
+  @@index([categoryId, isActive])
+  @@index([ownerId, isActive])
+}
+
+model UserWord {
+  userId             Int
+  wordId             Int
+  firstSeenAt        DateTime?
+  lastSeenAt         DateTime?
+  timesSeen          Int       @default(0)
+  timesKnown         Int       @default(0)
+  timesUnknown       Int       @default(0)
+  currentScore       Float     @default(0)
+  currentLevel       Int       @default(0) // 0=новое, 1=незнакомое, 2=знакомое
+  lastAnswer         String? // KNOW | UNKNOWN
+  lastAnswerAt       DateTime?
+  consecutiveKnown   Int       @default(0)
+  consecutiveUnknown Int       @default(0)
+  testSeenCount      Int       @default(0)
+  testCorrectCount   Int       @default(0)
+  testWrongCount     Int       @default(0)
+  firstLearnedAt     DateTime?
+  timesSeenToLearn   Int?
+  nextReviewAt       DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  word Word @relation(fields: [wordId], references: [id], onDelete: Restrict)
+
+  @@id([userId, wordId])
+  @@index([userId, currentLevel])
+  @@index([userId, nextReviewAt])
+}
+
+model Session {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  mode          String // FLASHCARDS | TEST
+  categoryId    Int?
+  direction     String? // PL_RU | RU_PL
+  status        String    @default("ACTIVE") // ACTIVE | COMPLETED | ABANDONED
+  plannedCount  Int
+  answeredCount Int       @default(0)
+  isFull        Boolean   @default(false)
+  rewardedAt    DateTime?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  cards        SessionCard[]
+  events       Event[]
+  transactions CurrencyTransaction[]
+
+  @@index([userId, status])
+  @@index([userId, startedAt])
+}
+
+model SessionCard {
+  id             Int       @id @default(autoincrement())
+  sessionId      Int
+  wordId         Int
+  categoryId     Int
+  position       Int
+  promptText     String // снимок показываемого слова
+  options        String? // JSON: [{ wordId, label }] длиной 4, только для TEST
+  correctOption  Int?
+  selectedOption Int?
+  answerActionId String?   @unique // callback_query.id первого принятого ответа
+  answer         String? // KNOW | UNKNOWN | TEST_OPTION
+  isCorrect      Boolean?
+  shownAt        DateTime?
+  answeredAt     DateTime?
+
+  session  Session  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  word     Word     @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  events   Event[]
+
+  @@unique([sessionId, position])
+  @@index([sessionId, wordId])
+  @@index([wordId, shownAt])
+}
+
+model UserDay {
+  userId            Int
+  localDate         String // YYYY-MM-DD в User.timezone
+  status            String // COMPLETED | EARLY | SHIELDED | MISSED
+  completedSessions Int       @default(0)
+  shieldConsumed    Boolean   @default(false)
+  streakAppliedAt   DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([userId, localDate])
+  @@index([userId, status])
+}
+
+model ProcessedTelegramUpdate {
+  updateId    BigInt   @id
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+}
+
+model ReminderDelivery {
+  idempotencyKey String    @id // MORNING|EVENING:{userId}:{localDate}
+  userId         Int
+  type           String // MORNING | EVENING
+  localDate      String
+  reservedAt     DateTime  @default(now())
+  sentAt         DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, localDate])
+}
+
+model Event {
+  id             Int      @id @default(autoincrement())
+  idempotencyKey String   @unique
+  userId         Int
+  eventType      String
+  sessionId      Int?
+  cardId         Int?
+  answer         String?
+  responseTimeMs Int?
+  timestamp      DateTime @default(now())
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  session Session?     @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  card    SessionCard? @relation(fields: [cardId], references: [id], onDelete: Restrict)
+
+  @@index([userId, timestamp])
+  @@index([userId, eventType, timestamp])
+}
+
+model Purchase {
+  id             Int      @id @default(autoincrement())
+  idempotencyKey String   @unique
+  userId         Int
+  item           String // GIFT_SMALL | GIFT_SPECIAL | SHIELD
+  cost           Int
+  createdAt      DateTime @default(now())
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions CurrencyTransaction[]
+
+  @@index([userId, createdAt])
+}
+
+model CurrencyTransaction {
+  id             Int      @id @default(autoincrement())
+  idempotencyKey String   @unique
+  userId         Int
+  amount         Int
+  reason         String // SESSION_REWARD | TEST_REWARD | SURPRISE | PURCHASE | ADMIN
+  balanceAfter   Int
+  sessionId      Int?
+  purchaseId     Int?
+  createdAt      DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  session  Session?  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  purchase Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model AdminAdjustment {
+  id              Int      @id @default(autoincrement())
+  idempotencyKey  String   @unique
+  adminTelegramId BigInt
+  userId          Int
+  type            String // CURRENCY_GRANT | STREAK_RESTORE
+  value           Int
+  reason          String
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model WordOfDay {
+  id     Int    @id @default(autoincrement())
+  date   String @unique // YYYY-MM-DD
+  wordId Int
+
+  word Word @relation(fields: [wordId], references: [id], onDelete: Restrict)
+}
+
+model AdminMessage {
+  id              Int       @id @default(autoincrement())
+  idempotencyKey  String    @unique // ADMIN_MESSAGE:{userId}:{requestId}
+  adminTelegramId BigInt
+  userId          Int
+  text            String
+  createdAt       DateTime  @default(now())
+  sentAt          DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model UserContentState {
+  userId      Int
+  key         String
+  lastVariant Int
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([userId, key])
+}
+
+model ContentText {
+  id          Int      @id @default(autoincrement())
+  key         String
+  variant     Int
+  group       String // REMINDER | PRAISE | SURPRISE | UI | STREAK | WORD_OF_DAY
+  text        String
+  isActive    Boolean  @default(true)
+  isSeed      Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedById Int?
+
+  @@unique([key, variant])
+  @@index([key, isActive])
+  @@index([group, isActive])
+}
+
+model CurrencyConfig {
+  id          Int      @id @default(1)
+  icon        String   @default("☀️")
+  nameOne     String   @default("солнышко")
+  nameFew     String   @default("солнышка")
+  nameMany    String   @default("солнышек")
+  updatedAt   DateTime @updatedAt
+  updatedById Int?
+}
+
+model EconomyConfig {
+  id                 Int      @id @default(1)
+  flashcardReward    Int      @default(5)
+  testReward         Int      @default(10)
+  dailyLearningLimit Int      @default(20)
+  giftSmallPrice     Int      @default(120)
+  giftSpecialPrice   Int      @default(350)
+  shieldPrice        Int      @default(25)
+  updatedAt          DateTime @updatedAt
+  updatedById        Int?
+}
