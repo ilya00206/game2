@@ -14,6 +14,8 @@ datasource db {
 model User {
   id              Int      @id @default(autoincrement())
   telegramId      BigInt   @unique
+  firstName       String? // из Telegram, для отображения в админке
+  username        String? // из Telegram, без @, может отсутствовать
   currencyBalance Int      @default(0)
   currentStreak   Int      @default(0)
   maxStreak       Int      @default(0)
@@ -134,6 +136,7 @@ model SessionCard {
   categoryId     Int
   position       Int
   promptText     String // снимок показываемого слова
+  translationText String? // снимок перевода для FLASHCARDS; показывается после «Не знаю»
   options        String? // JSON: [{ wordId, label }] длиной 4, только для TEST
   correctOption  Int?
   selectedOption Int?

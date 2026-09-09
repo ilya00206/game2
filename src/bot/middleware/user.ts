@@ -22,10 +22,13 @@ export async function userMiddleware(ctx: AppContext, next: NextFunction): Promi
   }
 
   const telegramId = BigInt(from.id);
+  const profile = { firstName: from.first_name ?? null, username: from.username ?? null };
+
+  // Имя/username могут меняться в Telegram — обновляем при каждом обращении.
   const user = await prisma.user.upsert({
     where: { telegramId },
-    create: { telegramId },
-    update: {},
+    create: { telegramId, ...profile },
+    update: profile,
     select: USER_FIELDS,
   });
 

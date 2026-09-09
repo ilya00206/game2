@@ -225,6 +225,40 @@ describe('сессия карточек', () => {
     expect(result.accepted).toBe(true);
   });
 
+  it('«Не знаю» возвращает правильный перевод для раскрытия', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    const result = await service.answerCard(userId, started.card.cardId, 'UNKNOWN', 'action-1');
+    if (!result.accepted || result.completed) throw new Error('ответ не принят');
+
+    expect(result.reveal).not.toBeNull();
+    expect(result.reveal?.promptText).toBe(started.card.promptText);
+    expect(result.reveal?.translationText.length).toBeGreaterThan(0);
+  });
+
+  it('«Знаю» не показывает экран раскрытия', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    const result = await service.answerCard(userId, started.card.cardId, 'KNOW', 'action-1');
+    if (!result.accepted || result.completed) throw new Error('ответ не принят');
+
+    expect(result.reveal).toBeNull();
+  });
+
+  it('перевод для раскрытия соответствует направлению сессии', async () => {
+    const startedRu = await service.startFlashcardSession(userId, categoryId, 'RU_PL');
+    if (!startedRu.ok) throw new Error('сессия не создана');
+
+    const result = await service.answerCard(userId, startedRu.card.cardId, 'UNKNOWN', 'action-1');
+    if (!result.accepted || result.completed) throw new Error('ответ не принят');
+
+    // В режиме RU_PL показывается русское слово, перевод должен быть польским.
+    expect(result.reveal?.promptText.startsWith('слово')).toBe(true);
+    expect(result.reveal?.translationText.startsWith('slowo')).toBe(true);
+  });
+
   it('саммари категории считается по активным словам', async () => {
     const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
     if (!started.ok) throw new Error('сессия не создана');

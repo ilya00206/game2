@@ -26,6 +26,7 @@ import {
   promptCurrencyEdit,
   promptEconomyEdit,
   promptGrant,
+  promptMessage,
   promptStreak,
   promptWordOfDay,
   showAdminMenu,
@@ -218,6 +219,11 @@ export function createBot(services: Services): Bot<AppContext> {
   bot.callbackQuery(/^admin:streak:(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await promptStreak(ctx, Number(ctx.match[1]));
+  });
+
+  bot.callbackQuery(/^admin:msg:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await promptMessage(ctx, Number(ctx.match[1]));
   });
 
   bot.callbackQuery(CALLBACK.adminConfirm, async (ctx) => {

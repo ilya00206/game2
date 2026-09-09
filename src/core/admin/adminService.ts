@@ -46,6 +46,8 @@ export type ReserveMessageResult =
 export interface AdminUserRow {
   id: number;
   telegramId: bigint;
+  firstName: string | null;
+  username: string | null;
   currentStreak: number;
   maxStreak: number;
   currencyBalance: number;
@@ -72,6 +74,8 @@ export class AdminService {
       select: {
         id: true,
         telegramId: true,
+        firstName: true,
+        username: true,
         currentStreak: true,
         maxStreak: true,
         currencyBalance: true,
@@ -79,6 +83,22 @@ export class AdminService {
       },
       orderBy: { id: 'asc' },
       take: limit,
+    });
+  }
+
+  async getUser(userId: number): Promise<AdminUserRow | null> {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        telegramId: true,
+        firstName: true,
+        username: true,
+        currentStreak: true,
+        maxStreak: true,
+        currencyBalance: true,
+        shields: true,
+      },
     });
   }
 

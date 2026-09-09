@@ -21,10 +21,13 @@ export function progressBar(answered: number, planned: number): string {
   return `${filled}${empty}  ${answered}/${planned}`;
 }
 
-function cardText(card: CardView): string {
+function cardText(card: CardView, translation?: string): string {
   const flag = card.direction === 'PL_RU' ? '🇵🇱' : '🇷🇺';
   const header = card.mode === 'TEST' ? '🎯 Как это переводится?\n\n' : '';
-  return `${header}${flag} <b>${escapeHtml(card.promptText)}</b>\n\n${progressBar(card.answeredCount, card.plannedCount)}`;
+  const word = translation
+    ? `${escapeHtml(card.promptText)} — ${escapeHtml(translation)}`
+    : escapeHtml(card.promptText);
+  return `${header}${flag} <b>${word}</b>\n\n${progressBar(card.answeredCount, card.plannedCount)}`;
 }
 
 function cardKeyboard(card: CardView): InlineKeyboard {
@@ -199,12 +202,50 @@ export async function handleAnswer(
     return;
   }
 
-  if (!result.completed) {
-    await renderCard(ctx, result.card);
+  if (result.completed) {
+    await showCompletion(ctx, result.summary);
     return;
   }
 
-  await showCompletion(ctx, result.summary);
+  if (result.reveal) {
+    await showReveal(ctx, result.reveal);
+    return;
+  }
+
+  await renderCard(ctx, result.card);
+}
+
+/** Показывает перевод в том же сообщении карточки, прежде чем перейти к следующей (§4.2). */
+async function showReveal(
+  ctx: AppContext,
+  reveal: {
+    promptText: string;
+    translationText: string;
+    direction: CardView['direction'];
+    answeredCount: number;
+    plannedCount: number;
+  },
+): Promise<void> {
+  const text = cardText(
+    {
+      cardId: 0,
+      promptText: reveal.promptText,
+      direction: reveal.direction,
+      position: 0,
+      answeredCount: reveal.answeredCount,
+      plannedCount: reveal.plannedCount,
+      mode: 'FLASHCARDS',
+      options: null,
+    },
+    reveal.translationText,
+  );
+
+  const keyboard = new InlineKeyboard()
+    .text('▶️ Дальше', CALLBACK.sessionResume)
+    .row()
+    .text('⏹️ Закончить', CALLBACK.sessionFinish);
+
+  await editOrReply(ctx, text, keyboard);
 }
 
 export async function handleFinish(ctx: AppContext): Promise<void> {

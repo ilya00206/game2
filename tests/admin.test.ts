@@ -31,6 +31,25 @@ afterEach(async () => {
   await db.cleanup();
 });
 
+describe('список пользователей', () => {
+  it('возвращает имя и username вместе с id', async () => {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { firstName: 'Даша', username: 'dasha_test' },
+    });
+
+    const users = await admin.listUsers();
+    const found = users.find((user) => user.id === userId);
+
+    expect(found?.firstName).toBe('Даша');
+    expect(found?.username).toBe('dasha_test');
+  });
+
+  it('getUser возвращает null для несуществующего пользователя', async () => {
+    expect(await admin.getUser(999999)).toBeNull();
+  });
+});
+
 describe('ручное начисление валюты', () => {
   it('увеличивает баланс и сохраняет причину', async () => {
     const result = await admin.grantCurrency({
@@ -260,6 +279,88 @@ describe('управление текстами', () => {
     content.invalidate('streak.lost');
 
     expect(await content.render('streak.lost', userId)).toBe('Новый текст');
+  });
+});
+
+describe('разовое сообщение пользователю', () => {
+  it('резервирует сообщение и возвращает адресата', async () => {
+    const result = await admin.reserveMessage({
+      adminTelegramId: ADMIN_TELEGRAM_ID,
+      userId,
+      text: '  Привет ❤️  ',
+      requestId: 'req-1',
+    });
+
+    expect(result).toEqual({ ok: true, telegramId: 1n, text: 'Привет ❤️' });
+
+    const stored = await prisma.adminMessage.findFirstOrThrow({ where: { userId } });
+    expect(stored.text).toBe('Привет ❤️');
+    expect(stored.sentAt).toBeNull();
+  });
+
+  it('повтор с тем же requestId не отправляет второй раз', async () => {
+    const params = {
+      adminTelegramId: ADMIN_TELEGRAM_ID,
+      userId,
+      text: 'Привет',
+      requestId: 'req-1',
+    };
+
+    expect((await admin.reserveMessage(params)).ok).toBe(true);
+    expect(await admin.reserveMessage(params)).toEqual({ ok: false, reason: 'ALREADY_SENT' });
+
+    expect(await prisma.adminMessage.count()).toBe(1);
+  });
+
+  it('разные нажатия создают разные сообщения', async () => {
+    await admin.reserveMessage({
+      adminTelegramId: ADMIN_TELEGRAM_ID,
+      userId,
+      text: 'Первое',
+      requestId: 'req-1',
+    });
+    await admin.reserveMessage({
+      adminTelegramId: ADMIN_TELEGRAM_ID,
+      userId,
+      text: 'Второе',
+      requestId: 'req-2',
+    });
+
+    expect(await prisma.adminMessage.count()).toBe(2);
+  });
+
+  it('отклоняет пустой текст и неизвестного пользователя', async () => {
+    expect(
+      await admin.reserveMessage({
+        adminTelegramId: ADMIN_TELEGRAM_ID,
+        userId,
+        text: '   ',
+        requestId: 'a',
+      }),
+    ).toEqual({ ok: false, reason: 'INVALID' });
+
+    expect(
+      await admin.reserveMessage({
+        adminTelegramId: ADMIN_TELEGRAM_ID,
+        userId: 9999,
+        text: 'Привет',
+        requestId: 'b',
+      }),
+    ).toEqual({ ok: false, reason: 'USER_NOT_FOUND' });
+  });
+
+  it('отмечает фактическую отправку', async () => {
+    await admin.reserveMessage({
+      adminTelegramId: ADMIN_TELEGRAM_ID,
+      userId,
+      text: 'Привет',
+      requestId: 'req-1',
+    });
+
+    await admin.markMessageSent(userId, 'req-1');
+
+    const stored = await prisma.adminMessage.findFirstOrThrow({ where: { userId } });
+    expect(stored.sentAt).not.toBeNull();
   });
 });
 

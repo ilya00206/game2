@@ -5,6 +5,7 @@ import { escapeHtml } from '../../content/service.js';
 import { formatCurrency } from '../../core/economy/currency.js';
 import { toLocalDate } from '../../core/time.js';
 import { CALLBACK } from '../keyboards.js';
+import { logger } from '../../logger.js';
 import { pendingConfirm, pendingInput, type PendingInput } from '../state.js';
 import { editOrReply } from '../ui.js';
 
@@ -42,8 +43,9 @@ export async function showUsers(ctx: AppContext): Promise<void> {
 
   const keyboard = new InlineKeyboard();
   const lines = users.map((user) => {
-    keyboard.text(`ID ${user.telegramId}`, `admin:user:${user.id}`).row();
-    return `<code>${user.telegramId}</code> · 🔥 ${user.currentStreak}/${user.maxStreak} · ${formatCurrency(user.currencyBalance, currency)} · 🛡 ${user.shields}`;
+    const displayName = userDisplayName(user);
+    keyboard.text(displayName, `admin:user:${user.id}`).row();
+    return `<b>${escapeHtml(displayName)}</b> (<code>${user.telegramId}</code>) · 🔥 ${user.currentStreak}/${user.maxStreak} · ${formatCurrency(user.currencyBalance, currency)} · 🛡 ${user.shields}`;
   });
 
   keyboard.text('⬅️ Админ', CALLBACK.menuAdmin);
@@ -51,7 +53,20 @@ export async function showUsers(ctx: AppContext): Promise<void> {
   await editOrReply(ctx, lines.join('\n') || 'Пользователей пока нет.', keyboard);
 }
 
+/** Имя из Telegram, с запасным вариантом на случай отсутствия имени/username. */
+function userDisplayName(user: { firstName: string | null; username: string | null; telegramId: bigint }): string {
+  if (user.firstName) {
+    return user.username ? `${user.firstName} (@${user.username})` : user.firstName;
+  }
+  if (user.username) {
+    return `@${user.username}`;
+  }
+  return `ID ${user.telegramId}`;
+}
+
 export async function showUserCard(ctx: AppContext, targetUserId: number): Promise<void> {
+  const user = await ctx.services.admin.getUser(targetUserId);
+
   const keyboard = new InlineKeyboard()
     .text('☀️ Начислить валюту', `admin:grant:${targetUserId}`)
     .row()
@@ -61,7 +76,8 @@ export async function showUserCard(ctx: AppContext, targetUserId: number): Promi
     .row()
     .text('⬅️ Пользователи', CALLBACK.adminUsers);
 
-  await editOrReply(ctx, `Пользователь #${targetUserId}`, keyboard);
+  const title = user ? userDisplayName(user) : `#${targetUserId}`;
+  await editOrReply(ctx, `Пользователь: <b>${escapeHtml(title)}</b>`, keyboard);
 }
 
 export async function promptMessage(ctx: AppContext, targetUserId: number): Promise<void> {
@@ -212,6 +228,11 @@ export async function confirmAdminAction(ctx: AppContext, requestId: string): Pr
 
   pendingConfirm.clear(ctx.appUser.id);
 
+  if (pending.kind === 'ADMIN_MESSAGE') {
+    await sendAdminMessage(ctx, pending.targetUserId, pending.text, requestId);
+    return;
+  }
+
   const result =
     pending.kind === 'ADMIN_GRANT'
       ? await ctx.services.admin.grantCurrency({
@@ -236,6 +257,42 @@ export async function confirmAdminAction(ctx: AppContext, requestId: string): Pr
     : 'Не получилось: проверь значения.';
 
   await editOrReply(ctx, text, adminBack());
+}
+
+/** Сообщение резервируется в БД, и только потом вызывается Telegram (§5.1). */
+async function sendAdminMessage(
+  ctx: AppContext,
+  targetUserId: number,
+  text: string,
+  requestId: string,
+): Promise<void> {
+  const reserved = await ctx.services.admin.reserveMessage({
+    adminTelegramId: ctx.appUser.telegramId,
+    userId: targetUserId,
+    text,
+    requestId,
+  });
+
+  if (!reserved.ok) {
+    const message =
+      reserved.reason === 'ALREADY_SENT'
+        ? 'Это сообщение уже отправлено.'
+        : reserved.reason === 'USER_NOT_FOUND'
+          ? 'Пользователь не найден.'
+          : 'Сообщение пустое или слишком длинное.';
+    await editOrReply(ctx, message, adminBack());
+    return;
+  }
+
+  try {
+    // Без parse_mode: текст админа уходит как есть и не ломает разметку.
+    await ctx.api.sendMessage(reserved.telegramId.toString(), reserved.text);
+    await ctx.services.admin.markMessageSent(targetUserId, requestId);
+    await editOrReply(ctx, 'Сообщение отправлено ✅', adminBack());
+  } catch (error) {
+    logger.error({ err: error, targetUserId }, 'Не удалось отправить сообщение пользователю');
+    await editOrReply(ctx, 'Не удалось отправить — возможно, пользователь не начинал чат с ботом.', adminBack());
+  }
 }
 
 export function parseAmountAndReason(
@@ -354,6 +411,31 @@ export async function handleAdminInput(
       pendingInput.clear(ctx.appUser.id);
       content.invalidate(pending.key);
       await ctx.reply('Текст сохранён ✅');
+      return true;
+    }
+
+    case 'ADMIN_MESSAGE': {
+      const message = text.trim();
+      if (message.length === 0) {
+        await ctx.reply('Пустое сообщение отправить нельзя.');
+        return true;
+      }
+
+      pendingInput.clear(ctx.appUser.id);
+      pendingConfirm.set(ctx.appUser.id, {
+        kind: 'ADMIN_MESSAGE',
+        targetUserId: pending.targetUserId,
+        text: message,
+      });
+
+      const keyboard = new InlineKeyboard()
+        .text('✅ Отправить', CALLBACK.adminConfirm)
+        .text('Отмена', CALLBACK.menuAdmin);
+
+      await ctx.reply(`Будет отправлено:\n\n${escapeHtml(message)}`, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard,
+      });
       return true;
     }
 

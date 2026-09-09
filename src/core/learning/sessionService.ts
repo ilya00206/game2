@@ -78,7 +78,20 @@ export type StartTestResult =
 
 export type AnswerResult =
   | { accepted: false }
-  | { accepted: true; completed: false; card: CardView }
+  | {
+      accepted: true;
+      completed: false;
+      card: CardView;
+      reveal:
+        | {
+            promptText: string;
+            translationText: string;
+            direction: Direction;
+            answeredCount: number;
+            plannedCount: number;
+          }
+        | null;
+    }
   | { accepted: true; completed: true; sessionId: number; summary: CompletionSummary };
 
 /** Видимость контента: системное + собственное, чужое недоступно (§3.3). */
@@ -303,6 +316,8 @@ export class SessionService {
                 categoryId,
                 position: index,
                 promptText: direction === 'PL_RU' ? (word?.polish ?? '') : (word?.russian ?? ''),
+                // Перевод — снимок на момент создания плана, показывается после «Не знаю».
+                translationText: direction === 'PL_RU' ? (word?.russian ?? '') : (word?.polish ?? ''),
               };
             }),
           });
@@ -346,12 +361,15 @@ export class SessionService {
             wordId: true,
             sessionId: true,
             shownAt: true,
+            promptText: true,
+            translationText: true,
             session: {
               select: {
                 id: true,
                 userId: true,
                 mode: true,
                 status: true,
+                direction: true,
                 answeredCount: true,
                 plannedCount: true,
                 user: { select: { timezone: true } },
@@ -467,6 +485,11 @@ export class SessionService {
           completed,
           sessionId: card.session.id,
           summary,
+          translationText: card.translationText,
+          promptText: card.promptText,
+          direction: (card.session.direction ?? 'PL_RU') as Direction,
+          answeredCount,
+          plannedCount: card.session.plannedCount,
         };
       }),
     );
@@ -489,7 +512,21 @@ export class SessionService {
       return { accepted: false };
     }
 
-    return { accepted: true, completed: false, card };
+    return {
+      accepted: true,
+      completed: false,
+      card,
+      reveal:
+        answer === 'UNKNOWN' && result.translationText !== null
+          ? {
+              promptText: result.promptText,
+              translationText: result.translationText,
+              direction: result.direction,
+              answeredCount: result.answeredCount,
+              plannedCount: result.plannedCount,
+            }
+          : null,
+    };
   }
 
   /** Общая для карточек и теста часть: стрик, награда и сюрприз в той же транзакции. */
@@ -830,7 +867,8 @@ export class SessionService {
       return { accepted: false };
     }
 
-    return { accepted: true, completed: false, card };
+    // Правильный вариант уже виден в вопросе теста, отдельного раскрытия не нужно.
+    return { accepted: true, completed: false, card, reveal: null };
   }
 
   /** Досрочное завершение: ответы сохраняются, награда и стрик не начисляются (§4.2). */

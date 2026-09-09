@@ -31,6 +31,11 @@ export function formatCurrency(amount: number, forms: CurrencyForms): string {
   return `${amount} ${forms.icon} ${pluralizeRu(amount, forms)}`;
 }
 
+/** «5 солнышек» — без иконки, когда она уже показана рядом отдельно. */
+export function formatCurrencyAmount(amount: number, forms: CurrencyForms): string {
+  return `${amount} ${pluralizeRu(amount, forms)}`;
+}
+
 /** «☀️ солнышек» без числа — для сообщений о лимите. */
 export function currencyNamePlural(forms: CurrencyForms): string {
   return `${forms.icon} ${forms.nameMany}`;
