@@ -4,7 +4,7 @@ import { ContentService } from '../src/content/service.js';
 import { ReminderService } from '../src/core/reminders/reminderService.js';
 import { collectDueReminders } from '../src/scheduler/reminders.js';
 import type { ScheduleEntry } from '../src/scheduler/registry.js';
-import { createTestDb, seedCategory, type TestDb } from './helpers/testDb.js';
+import { createTestDb, type TestDb } from './helpers/testDb.js';
 
 const MINSK = 'Europe/Minsk';
 
@@ -141,13 +141,9 @@ describe('доставка напоминаний', () => {
   });
 
   it('добавляет блок «Слово дня», если он задан на эту дату', async () => {
-    const categoryId = await seedCategory(prisma, 'Chuvstva', 4);
-    const word = await prisma.word.findFirstOrThrow({ where: { categoryId } });
-    await prisma.word.update({
-      where: { id: word.id },
-      data: { polish: 'kocham', russian: 'любить' },
+    await prisma.wordOfDay.create({
+      data: { date: '2026-09-09', polish: 'kocham', russian: 'любить' },
     });
-    await prisma.wordOfDay.create({ data: { date: '2026-09-09', wordId: word.id } });
 
     const text = await reminders.buildMorning(userId, '2026-09-09');
     expect(text).toContain('Слово дня');

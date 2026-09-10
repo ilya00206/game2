@@ -40,6 +40,15 @@ export interface CompletionSummary {
   reward: RewardResult;
   surprise: SurpriseResult;
   offerEarlyStreak: boolean;
+  /** Заполнено только для теста: по каждому вопросу — правильный и выбранный ответ (§4.3). */
+  testSummary: TestSummaryItem[] | null;
+}
+
+export interface TestSummaryItem {
+  polish: string;
+  correctRussian: string;
+  selectedRussian: string | null;
+  isCorrect: boolean;
 }
 
 export interface CategoryListItem {
@@ -57,6 +66,8 @@ export interface CardView {
   plannedCount: number;
   mode: 'FLASHCARDS' | 'TEST';
   options: TestOption[] | null;
+  /** Итог по уже отвеченным вопросам теста по порядку позиций; null для FLASHCARDS. */
+  testResults: boolean[] | null;
 }
 
 export interface ActiveSessionView {
@@ -219,6 +230,16 @@ export class SessionService {
       }
     }
 
+    const testResults = isTest
+      ? (
+          await this.deps.prisma.sessionCard.findMany({
+            where: { sessionId, answeredAt: { not: null } },
+            orderBy: { position: 'asc' },
+            select: { isCorrect: true },
+          })
+        ).map((row) => row.isCorrect ?? false)
+      : null;
+
     return {
       cardId: card.id,
       promptText: card.promptText,
@@ -228,6 +249,7 @@ export class SessionService {
       options: parseOptions(card.options),
       answeredCount: session.answeredCount,
       plannedCount: session.plannedCount,
+      testResults,
     };
   }
 
@@ -571,12 +593,64 @@ export class SessionService {
 
     params.events.push(...streak.events);
 
+    const testSummary =
+      params.mode === 'TEST' ? await this.buildTestSummary(tx, params.sessionId) : null;
+
+    const offerEarlyStreak =
+      streak.completedSessionsToday >= EARLY_STREAK_REQUIRED_SESSIONS &&
+      !(await this.hasFutureEarlyBooking(tx, params.userId, streak.today));
+
     return {
       streak,
       reward,
       surprise,
-      offerEarlyStreak: streak.completedSessionsToday >= EARLY_STREAK_REQUIRED_SESSIONS,
+      offerEarlyStreak,
+      testSummary,
     };
+  }
+
+  /** Не предлагать повторно, если бронь на следующий день уже сделана (§3.2). */
+  private async hasFutureEarlyBooking(
+    tx: PrismaTransaction,
+    userId: number,
+    today: string,
+  ): Promise<boolean> {
+    const booking = await tx.userDay.findFirst({
+      where: { userId, status: 'EARLY', localDate: { gt: today } },
+      select: { localDate: true },
+    });
+    return booking !== null;
+  }
+
+  /** Один читаемый список: правильный вариант, выбор пользователя и итог по каждому вопросу. */
+  private async buildTestSummary(
+    tx: PrismaTransaction,
+    sessionId: number,
+  ): Promise<TestSummaryItem[]> {
+    const cards = await tx.sessionCard.findMany({
+      where: { sessionId },
+      orderBy: { position: 'asc' },
+      select: {
+        promptText: true,
+        options: true,
+        correctOption: true,
+        selectedOption: true,
+        isCorrect: true,
+      },
+    });
+
+    return cards.map((card) => {
+      const options = parseOptions(card.options) ?? [];
+      const correct = card.correctOption !== null ? options[card.correctOption] : undefined;
+      const selected = card.selectedOption !== null ? options[card.selectedOption] : undefined;
+
+      return {
+        polish: card.promptText,
+        correctRussian: correct?.label ?? '—',
+        selectedRussian: selected?.label ?? null,
+        isCorrect: card.isCorrect ?? false,
+      };
+    });
   }
 
   /**

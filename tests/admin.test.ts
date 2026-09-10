@@ -365,28 +365,26 @@ describe('разовое сообщение пользователю', () => {
 });
 
 describe('слово дня и контент', () => {
-  it('назначает и заменяет слово дня на дату', async () => {
-    const categoryId = await seedCategory(prisma, 'Chuvstva', 4);
-    const words = await prisma.word.findMany({ where: { categoryId }, take: 2 });
-    const [first, second] = words;
-    if (!first || !second) throw new Error('нет слов');
-
-    expect(await admin.setWordOfDay('2026-09-10', first.polish)).toEqual({ ok: true });
-    expect(await admin.setWordOfDay('2026-09-10', second.polish)).toEqual({ ok: true });
+  it('назначает и заменяет слово дня на дату, слово может быть любым', async () => {
+    expect(await admin.setWordOfDay('2026-09-10', 'kocham', 'люблю')).toEqual({ ok: true });
+    expect(await admin.setWordOfDay('2026-09-10', 'nieznane', 'незнакомое')).toEqual({
+      ok: true,
+    });
 
     const entries = await prisma.wordOfDay.findMany({ where: { date: '2026-09-10' } });
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.wordId).toBe(second.id);
+    expect(entries[0]?.polish).toBe('nieznane');
+    expect(entries[0]?.russian).toBe('незнакомое');
   });
 
-  it('отклоняет неверную дату и неизвестное слово', async () => {
-    expect(await admin.setWordOfDay('10-09-2026', 'kot')).toEqual({
+  it('отклоняет неверную дату и пустое слово', async () => {
+    expect(await admin.setWordOfDay('10-09-2026', 'kot', 'кот')).toEqual({
       ok: false,
       reason: 'INVALID_DATE',
     });
-    expect(await admin.setWordOfDay('2026-09-10', 'nieznane')).toEqual({
+    expect(await admin.setWordOfDay('2026-09-10', '', 'кот')).toEqual({
       ok: false,
-      reason: 'WORD_NOT_FOUND',
+      reason: 'INVALID_WORD',
     });
   });
 

@@ -69,7 +69,6 @@ model Word {
   owner        User?         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   userWords    UserWord[]
   sessionCards SessionCard[]
-  wordOfDays   WordOfDay[]
 
   @@unique([categoryId, polish, ownerId])
   @@index([categoryId, isActive])
@@ -258,11 +257,10 @@ model AdminAdjustment {
 }
 
 model WordOfDay {
-  id     Int    @id @default(autoincrement())
-  date   String @unique // YYYY-MM-DD
-  wordId Int
-
-  word Word @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  id      Int    @id @default(autoincrement())
+  date    String @unique // YYYY-MM-DD
+  polish  String
+  russian String
 }
 
 model AdminMessage {

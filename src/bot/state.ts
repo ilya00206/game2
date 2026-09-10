@@ -11,6 +11,7 @@ export type PendingInput =
   | { kind: 'ADMIN_TEXT_EDIT'; key: ContentKey; variant: number }
   | { kind: 'ADMIN_TEXT_ADD'; key: ContentKey }
   | { kind: 'ADMIN_WORD_OF_DAY' }
+  | { kind: 'ADMIN_WORD_OF_DAY_RUSSIAN'; date: string; polish: string }
   | { kind: 'ADMIN_MESSAGE'; targetUserId: number };
 
 /** Разобранное действие ждёт подтверждения; requestId берётся с кнопки подтверждения. */

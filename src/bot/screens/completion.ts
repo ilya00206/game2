@@ -1,11 +1,29 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context.js';
-import type { CompletionSummary } from '../../core/learning/sessionService.js';
+import type { CompletionSummary, TestSummaryItem } from '../../core/learning/sessionService.js';
 import { formatCurrency, currencyNamePlural } from '../../core/economy/currency.js';
 import { findStreakTitle, isStreakMilestone } from '../../content/streakTitles.js';
+import { escapeHtml } from '../../content/service.js';
 import { CALLBACK } from '../keyboards.js';
 import { backToMenuKeyboard } from '../keyboards.js';
 import { editOrReply } from '../ui.js';
+
+/** Саммари теста: что правильно/неправильно и какие были ответы. */
+function renderTestSummary(items: TestSummaryItem[]): string {
+  const correctCount = items.filter((item) => item.isCorrect).length;
+
+  const lines = items.map((item, index) => {
+    const mark = item.isCorrect ? '✅' : '❌';
+    const word = `<b>${escapeHtml(item.polish)}</b> — ${escapeHtml(item.correctRussian)}`;
+    const yourAnswer =
+      !item.isCorrect && item.selectedRussian
+        ? ` (твой ответ: ${escapeHtml(item.selectedRussian)})`
+        : '';
+    return `${index + 1}. ${mark} ${word}${yourAnswer}`;
+  });
+
+  return [`🎯 <b>Результаты теста: ${correctCount}/${items.length}</b>`, ...lines].join('\n');
+}
 
 /**
  * Стрик, веха, рекорд и титул идут одним сообщением в фиксированном порядке (§3.2).
@@ -54,6 +72,10 @@ export async function showCompletion(
   }
 
   await editOrReply(ctx, blocks.join('\n\n'), backToMenuKeyboard());
+
+  if (summary.testSummary) {
+    await ctx.reply(renderTestSummary(summary.testSummary), { parse_mode: 'HTML' });
+  }
 
   if (streak.shieldedDates.length > 0) {
     await ctx.reply(await content.render('streak.shield_used', userId));

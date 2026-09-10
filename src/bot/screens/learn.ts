@@ -21,13 +21,23 @@ export function progressBar(answered: number, planned: number): string {
   return `${filled}${empty}  ${answered}/${planned}`;
 }
 
+/** В тесте квадрат красит по правильности ответа: 🟩 верно, 🟥 неверно, ⬜ ещё не отвечено. */
+export function testProgressBar(results: boolean[], planned: number): string {
+  const answered = results.map((isCorrect) => (isCorrect ? '🟩' : '🟥')).join('');
+  const empty = '⬜'.repeat(Math.max(planned - results.length, 0));
+  return `${answered}${empty}  ${results.length}/${planned}`;
+}
+
 function cardText(card: CardView, translation?: string): string {
   const flag = card.direction === 'PL_RU' ? '🇵🇱' : '🇷🇺';
   const header = card.mode === 'TEST' ? '🎯 Как это переводится?\n\n' : '';
   const word = translation
     ? `${escapeHtml(card.promptText)} — ${escapeHtml(translation)}`
     : escapeHtml(card.promptText);
-  return `${header}${flag} <b>${word}</b>\n\n${progressBar(card.answeredCount, card.plannedCount)}`;
+  const bar = card.testResults
+    ? testProgressBar(card.testResults, card.plannedCount)
+    : progressBar(card.answeredCount, card.plannedCount);
+  return `${header}${flag} <b>${word}</b>\n\n${bar}`;
 }
 
 function cardKeyboard(card: CardView): InlineKeyboard {
@@ -236,6 +246,7 @@ async function showReveal(
       plannedCount: reveal.plannedCount,
       mode: 'FLASHCARDS',
       options: null,
+      testResults: null,
     },
     reveal.translationText,
   );

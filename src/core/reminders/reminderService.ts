@@ -63,13 +63,13 @@ export class ReminderService {
 
     const wordOfDay = await this.deps.prisma.wordOfDay.findUnique({
       where: { date: localDate },
-      select: { word: { select: { polish: true, russian: true } } },
+      select: { polish: true, russian: true },
     });
 
     if (wordOfDay) {
       const intro = await this.deps.content.render('word_of_day.intro', userId);
       blocks.push(
-        `❤️ Слово дня: <b>${escapeHtml(wordOfDay.word.polish)}</b> — ${escapeHtml(wordOfDay.word.russian)}\n${intro}`,
+        `❤️ Слово дня: <b>${escapeHtml(wordOfDay.polish)}</b> — ${escapeHtml(wordOfDay.russian)}\n${intro}`,
       );
     }
 

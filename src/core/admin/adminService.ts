@@ -5,6 +5,7 @@ import { withWriteRetry } from '../../db/retry.js';
 import { validateTemplate, type ContentKey } from '../../content/keys.js';
 import { seedTextFor } from '../../content/seed.js';
 import { SINGLETON_ID } from '../economy/config.js';
+import { wordInputSchema } from '../vocabulary/vocabularyService.js';
 
 export const MAX_REASON_LENGTH = 500;
 
@@ -60,7 +61,7 @@ export type AdminActionResult =
 
 export type WordOfDayResult =
   | { ok: true }
-  | { ok: false; reason: 'INVALID_DATE' | 'WORD_NOT_FOUND' };
+  | { ok: false; reason: 'INVALID_DATE' | 'INVALID_WORD' };
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -434,24 +435,21 @@ export class AdminService {
     return true;
   }
 
-  async setWordOfDay(date: string, polish: string): Promise<WordOfDayResult> {
+  /** Слово дня — произвольная пара, не обязана с пользовательским словарём (§6.1). */
+  async setWordOfDay(date: string, polish: string, russian: string): Promise<WordOfDayResult> {
     if (!localDateSchema.safeParse(date).success) {
       return { ok: false, reason: 'INVALID_DATE' };
     }
 
-    const word = await this.prisma.word.findFirst({
-      where: { polish, isActive: true },
-      select: { id: true },
-    });
-
-    if (!word) {
-      return { ok: false, reason: 'WORD_NOT_FOUND' };
+    const parsed = wordInputSchema.safeParse({ polish, russian });
+    if (!parsed.success) {
+      return { ok: false, reason: 'INVALID_WORD' };
     }
 
     await this.prisma.wordOfDay.upsert({
       where: { date },
-      create: { date, wordId: word.id },
-      update: { wordId: word.id },
+      create: { date, polish: parsed.data.polish, russian: parsed.data.russian },
+      update: { polish: parsed.data.polish, russian: parsed.data.russian },
     });
 
     return { ok: true };
@@ -465,9 +463,17 @@ export class AdminService {
   async listWordOfDay(fromDate: string, limit = 10) {
     return this.prisma.wordOfDay.findMany({
       where: { date: { gte: fromDate } },
-      select: { date: true, word: { select: { polish: true, russian: true } } },
+      select: { date: true, polish: true, russian: true },
       orderBy: { date: 'asc' },
       take: limit,
+    });
+  }
+
+  /** Для главного экрана: слово дня на конкретную дату, если оно задано. */
+  async getWordOfDay(date: string): Promise<{ polish: string; russian: string } | null> {
+    return this.prisma.wordOfDay.findUnique({
+      where: { date },
+      select: { polish: true, russian: true },
     });
   }
 }

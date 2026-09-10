@@ -203,7 +203,7 @@ export async function showWordOfDay(ctx: AppContext): Promise<void> {
   keyboard.text('⬅️ Админ', CALLBACK.menuAdmin);
 
   const lines = entries.map(
-    (entry) => `${entry.date}: ${escapeHtml(entry.word.polish)} — ${escapeHtml(entry.word.russian)}`,
+    (entry) => `${entry.date}: ${escapeHtml(entry.polish)} — ${escapeHtml(entry.russian)}`,
   );
 
   await editOrReply(ctx, lines.join('\n') || 'Слов дня пока нет.', keyboard);
@@ -213,7 +213,7 @@ export async function promptWordOfDay(ctx: AppContext): Promise<void> {
   pendingInput.set(ctx.appUser.id, { kind: 'ADMIN_WORD_OF_DAY' });
   await editOrReply(
     ctx,
-    'Пришли: <code>ГГГГ-ММ-ДД польское_слово</code>\n\nНапример: <code>2026-09-10 kocham</code>',
+    'Пришли: <code>ГГГГ-ММ-ДД польское_слово</code>\n\nСлово может быть любым, даже ещё не из словаря. Например: <code>2026-09-10 kocham</code>',
     adminBack(),
   );
 }
@@ -448,10 +448,21 @@ export async function handleAdminInput(
         return true;
       }
 
-      const result = await admin.setWordOfDay(date, polish);
+      pendingInput.set(ctx.appUser.id, { kind: 'ADMIN_WORD_OF_DAY_RUSSIAN', date, polish });
+      await ctx.reply(`Теперь пришли перевод слова <b>${escapeHtml(polish)}</b> на русский:`, {
+        parse_mode: 'HTML',
+      });
+      return true;
+    }
+
+    case 'ADMIN_WORD_OF_DAY_RUSSIAN': {
+      const russian = text.trim();
+      const result = await admin.setWordOfDay(pending.date, pending.polish, russian);
       if (!result.ok) {
         await ctx.reply(
-          result.reason === 'INVALID_DATE' ? 'Дата в формате ГГГГ-ММ-ДД.' : 'Такого слова нет.',
+          result.reason === 'INVALID_DATE'
+            ? 'Дата в формате ГГГГ-ММ-ДД.'
+            : 'Слово и перевод должны быть от 1 до 100 символов.',
         );
         return true;
       }

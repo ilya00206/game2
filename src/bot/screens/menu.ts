@@ -1,14 +1,17 @@
 import type { AppContext } from '../context.js';
 import { escapeHtml } from '../../content/service.js';
 import { formatCurrencyAmount } from '../../core/economy/currency.js';
+import { toLocalDate } from '../../core/time.js';
 import { mainMenuKeyboard } from '../keyboards.js';
 import { editOrReply } from '../ui.js';
 
 export async function showMainMenu(ctx: AppContext): Promise<void> {
-  const { content, config } = ctx.services;
-  const [title, currency] = await Promise.all([
+  const { content, config, admin, clock } = ctx.services;
+  const today = toLocalDate(clock.now(), ctx.appUser.timezone);
+  const [title, currency, wordOfDay] = await Promise.all([
     content.render('ui.menu.title', ctx.appUser.id),
     config.currency(),
+    admin.getWordOfDay(today),
   ]);
 
   const balance = formatCurrencyAmount(ctx.appUser.currencyBalance, currency);
@@ -17,6 +20,10 @@ export async function showMainMenu(ctx: AppContext): Promise<void> {
     '',
     `${escapeHtml(currency.icon)} Баланс: <b>${escapeHtml(balance)}</b>`,
     `🔥 Серия: <b>${ctx.appUser.currentStreak} ${streakWord(ctx.appUser.currentStreak)}</b>`,
+    `🛡️ Щиты: <b>${ctx.appUser.shields}</b>`,
+    ...(wordOfDay
+      ? ['', `❤️ Слово дня: <b>${escapeHtml(wordOfDay.polish)}</b> — ${escapeHtml(wordOfDay.russian)}`]
+      : []),
   ].join('\n');
 
   await editOrReply(ctx, text, mainMenuKeyboard(ctx.isAdmin));
