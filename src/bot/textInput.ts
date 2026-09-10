@@ -10,7 +10,11 @@ export async function handleTextInput(ctx: AppContext, text: string): Promise<bo
     return false;
   }
 
-  if (pending.kind === 'ADD_WORD' || pending.kind === 'NEW_CATEGORY') {
+  if (
+    pending.kind === 'ADD_WORD' ||
+    pending.kind === 'ADD_WORD_RUSSIAN' ||
+    pending.kind === 'NEW_CATEGORY'
+  ) {
     return handleVocabularyInput(ctx, pending, text);
   }
 

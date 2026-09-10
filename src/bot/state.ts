@@ -2,6 +2,7 @@ import type { ContentKey } from '../content/keys.js';
 
 export type PendingInput =
   | { kind: 'ADD_WORD'; categoryId: number }
+  | { kind: 'ADD_WORD_RUSSIAN'; categoryId: number; polish: string }
   | { kind: 'NEW_CATEGORY' }
   | { kind: 'ADMIN_GRANT'; targetUserId: number }
   | { kind: 'ADMIN_STREAK'; targetUserId: number }

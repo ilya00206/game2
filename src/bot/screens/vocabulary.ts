@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context.js';
-import { parseWordInput } from '../../core/vocabulary/vocabularyService.js';
+import { MAX_TEXT_LENGTH } from '../../core/vocabulary/vocabularyService.js';
 import { escapeHtml } from '../../content/service.js';
 import {
   addWordCategoryCallback,
@@ -31,11 +31,7 @@ export async function showAddWordMenu(ctx: AppContext): Promise<void> {
 export async function promptAddWord(ctx: AppContext, categoryId: number): Promise<void> {
   pendingInput.set(ctx.appUser.id, { kind: 'ADD_WORD', categoryId });
 
-  await editOrReply(
-    ctx,
-    'Напиши слово и перевод через дефис:\n\n<code>kot - кот</code>',
-    backToMenuKeyboard(),
-  );
+  await editOrReply(ctx, 'Напиши слово по-польски:', backToMenuKeyboard());
 }
 
 export async function promptNewCategory(ctx: AppContext): Promise<void> {
@@ -63,30 +59,47 @@ export async function handleVocabularyInput(
     }
 
     pendingInput.set(ctx.appUser.id, { kind: 'ADD_WORD', categoryId: result.categoryId });
-    await ctx.reply('Категория создана ❤️ Теперь пришли слово: <code>kot - кот</code>', {
+    await ctx.reply('Категория создана ❤️ Теперь пришли слово по-польски:', {
       parse_mode: 'HTML',
       reply_markup: backToMenuKeyboard(),
     });
     return true;
   }
 
-  const parsed = parseWordInput(text);
-  if (!parsed) {
-    await ctx.reply('Не разобрал. Формат такой: <code>kot - кот</code>', {
+  if (pending.kind === 'ADD_WORD') {
+    const polish = text.trim();
+    if (polish.length === 0 || polish.length > MAX_TEXT_LENGTH) {
+      await ctx.reply('Напиши слово по-польски:');
+      return true;
+    }
+
+    pendingInput.set(ctx.appUser.id, {
+      kind: 'ADD_WORD_RUSSIAN',
+      categoryId: pending.categoryId,
+      polish,
+    });
+    await ctx.reply(`Переведи <b>${escapeHtml(polish)}</b> на русский:`, {
       parse_mode: 'HTML',
+      reply_markup: backToMenuKeyboard(),
     });
     return true;
   }
 
-  if (pending.kind !== 'ADD_WORD') {
+  if (pending.kind !== 'ADD_WORD_RUSSIAN') {
     return false;
+  }
+
+  const russian = text.trim();
+  if (russian.length === 0 || russian.length > MAX_TEXT_LENGTH) {
+    await ctx.reply('Напиши перевод на русский:');
+    return true;
   }
 
   const result = await ctx.services.vocabulary.addWord(
     ctx.appUser.id,
     pending.categoryId,
-    parsed.polish,
-    parsed.russian,
+    pending.polish,
+    russian,
   );
 
   if (!result.ok) {
@@ -106,7 +119,7 @@ export async function handleVocabularyInput(
     .text('⬅️ В меню', CALLBACK.menuRoot);
 
   await ctx.reply(
-    `Добавлено: <b>${escapeHtml(parsed.polish)}</b> — ${escapeHtml(parsed.russian)} ❤️`,
+    `Добавлено: <b>${escapeHtml(pending.polish)}</b> — ${escapeHtml(russian)} ❤️`,
     { parse_mode: 'HTML', reply_markup: keyboard },
   );
   return true;
