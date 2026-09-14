@@ -103,7 +103,19 @@ export type AnswerResult =
           }
         | null;
     }
-  | { accepted: true; completed: true; sessionId: number; summary: CompletionSummary };
+  | {
+      accepted: true;
+      completed: true;
+      sessionId: number;
+      summary: CompletionSummary;
+      reveal: {
+        promptText: string;
+        translationText: string;
+        direction: Direction;
+        answeredCount: number;
+        plannedCount: number;
+      } | null;
+    };
 
 /** Видимость контента: системное + собственное, чужое недоступно (§3.3). */
 function visibleOwner(userId: number) {
@@ -526,6 +538,16 @@ export class SessionService {
         completed: true,
         sessionId: result.sessionId,
         summary: result.summary,
+        reveal:
+          answer === 'UNKNOWN' && result.translationText !== null
+            ? {
+                promptText: result.promptText,
+                translationText: result.translationText,
+                direction: result.direction,
+                answeredCount: result.answeredCount,
+                plannedCount: result.plannedCount,
+              }
+            : null,
       };
     }
 

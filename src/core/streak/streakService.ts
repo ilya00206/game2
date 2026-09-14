@@ -8,6 +8,7 @@ export interface StreakOutcome {
   previousStreak: number;
   currentStreak: number;
   maxStreak: number;
+  shields: number;
   isNewRecord: boolean;
   increasedToday: boolean;
   shieldedDates: string[];
@@ -111,6 +112,7 @@ export async function applyStreak(
     previousStreak: user.currentStreak,
     currentStreak: result.currentStreak,
     maxStreak: result.maxStreak,
+    shields: result.shields,
     isNewRecord: result.maxStreak > user.maxStreak,
     increasedToday: result.streakIncreasedOn.includes(today),
     shieldedDates: result.shieldedDates,

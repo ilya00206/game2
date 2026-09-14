@@ -195,6 +195,25 @@ describe('сессия карточек', () => {
     expect(session?.finishedAt).not.toBeNull();
   });
 
+  it('возвращает перевод, если «Не знаю» на последней карточке завершает сессию', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    let card = started.card;
+    for (let index = 0; index < 9; index += 1) {
+      const result = await service.answerCard(userId, card.cardId, 'KNOW', `action-${index}`);
+      if (!result.accepted || result.completed) throw new Error('сессия завершилась раньше времени');
+      card = result.card;
+    }
+
+    const result = await service.answerCard(userId, card.cardId, 'UNKNOWN', 'action-last');
+
+    expect(result.accepted).toBe(true);
+    if (!result.accepted || !result.completed) throw new Error('последний ответ не завершил сессию');
+    expect(result.reveal?.promptText).toBe(card.promptText);
+    expect(result.reveal?.translationText.length).toBeGreaterThan(0);
+  });
+
   it('досрочное завершение сохраняет ответы и не начисляет полноту', async () => {
     const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
     if (!started.ok) throw new Error('сессия не создана');

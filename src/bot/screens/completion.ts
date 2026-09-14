@@ -32,6 +32,7 @@ function renderTestSummary(items: TestSummaryItem[]): string {
 export async function showCompletion(
   ctx: AppContext,
   summary: CompletionSummary,
+  options: { editCurrent?: boolean } = {},
 ): Promise<void> {
   const { content, config } = ctx.services;
   const userId = ctx.appUser.id;
@@ -71,7 +72,14 @@ export async function showCompletion(
     );
   }
 
-  await editOrReply(ctx, blocks.join('\n\n'), backToMenuKeyboard());
+  if (options.editCurrent === false) {
+    await ctx.reply(blocks.join('\n\n'), {
+      parse_mode: 'HTML',
+      reply_markup: backToMenuKeyboard(),
+    });
+  } else {
+    await editOrReply(ctx, blocks.join('\n\n'), backToMenuKeyboard());
+  }
 
   if (summary.testSummary) {
     await ctx.reply(renderTestSummary(summary.testSummary), { parse_mode: 'HTML' });

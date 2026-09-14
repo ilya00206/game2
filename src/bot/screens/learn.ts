@@ -213,6 +213,11 @@ export async function handleAnswer(
   }
 
   if (result.completed) {
+    if (result.reveal) {
+      await showReveal(ctx, result.reveal, false);
+      await showCompletion(ctx, result.summary, { editCurrent: false });
+      return;
+    }
     await showCompletion(ctx, result.summary);
     return;
   }
@@ -235,6 +240,7 @@ async function showReveal(
     answeredCount: number;
     plannedCount: number;
   },
+  canContinue = true,
 ): Promise<void> {
   const text = cardText(
     {
@@ -251,10 +257,12 @@ async function showReveal(
     reveal.translationText,
   );
 
-  const keyboard = new InlineKeyboard()
-    .text('▶️ Дальше', CALLBACK.sessionResume)
-    .row()
-    .text('⏹️ Закончить', CALLBACK.sessionFinish);
+  const keyboard = canContinue
+    ? new InlineKeyboard()
+        .text('▶️ Дальше', CALLBACK.sessionResume)
+        .row()
+        .text('⏹️ Закончить', CALLBACK.sessionFinish)
+    : backToMenuKeyboard();
 
   await editOrReply(ctx, text, keyboard);
 }

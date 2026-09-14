@@ -6,8 +6,10 @@ import { mainMenuKeyboard } from '../keyboards.js';
 import { editOrReply } from '../ui.js';
 
 export async function showMainMenu(ctx: AppContext): Promise<void> {
-  const { content, config, admin, clock } = ctx.services;
+  const { content, config, admin, clock, streaks } = ctx.services;
   const today = toLocalDate(clock.now(), ctx.appUser.timezone);
+  // Сверка стрика перед показом (§3.2): подтягивает пропущенные дни и списание щитов.
+  const streak = await streaks.reconcile(ctx.appUser.id);
   const [title, currency, wordOfDay] = await Promise.all([
     content.render('ui.menu.title', ctx.appUser.id),
     config.currency(),
@@ -19,8 +21,8 @@ export async function showMainMenu(ctx: AppContext): Promise<void> {
     escapeHtml(title),
     '',
     `${escapeHtml(currency.icon)} Баланс: <b>${escapeHtml(balance)}</b>`,
-    `🔥 Серия: <b>${ctx.appUser.currentStreak} ${streakWord(ctx.appUser.currentStreak)}</b>`,
-    `🛡️ Щиты: <b>${ctx.appUser.shields}</b>`,
+    `🔥 Серия: <b>${streak.currentStreak} ${streakWord(streak.currentStreak)}</b>`,
+    `🛡️ Щиты: <b>${streak.shields}</b>`,
     ...(wordOfDay
       ? ['', `❤️ Слово дня: <b>${escapeHtml(wordOfDay.polish)}</b> — ${escapeHtml(wordOfDay.russian)}`]
       : []),
