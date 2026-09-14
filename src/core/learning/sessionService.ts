@@ -955,6 +955,7 @@ export class SessionService {
         completed: true,
         sessionId: result.sessionId,
         summary: result.summary,
+        reveal: null,
       };
     }
 
