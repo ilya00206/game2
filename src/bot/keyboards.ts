@@ -27,6 +27,8 @@ export const CALLBACK = {
 export const categoryCallback = (categoryId: number): string => `learn:cat:${categoryId}`;
 export const directionCallback = (categoryId: number, direction: string): string =>
   `learn:dir:${categoryId}:${direction}`;
+export const typingCallback = (categoryId: number, direction: string): string =>
+  `learn:type:${categoryId}:${direction}`;
 export const answerCallback = (cardId: number, answer: string): string =>
   `card:ans:${cardId}:${answer}`;
 export const optionCallback = (cardId: number, index: number): string =>

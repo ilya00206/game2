@@ -51,6 +51,7 @@ import {
   showLearnMenu,
   startSession,
   startTest,
+  startTypingSession,
 } from './screens/learn.js';
 
 /** Обрабатываются только эти типы update — лишние не запрашиваются (§2.2). */
@@ -95,6 +96,11 @@ export function createBot(services: Services): Bot<AppContext> {
   bot.callbackQuery(/^learn:dir:(\d+):(PL_RU|RU_PL)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await startSession(ctx, Number(ctx.match[1]), ctx.match[2] as 'PL_RU' | 'RU_PL');
+  });
+
+  bot.callbackQuery(/^learn:type:(\d+):(PL_RU|RU_PL)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await startTypingSession(ctx, Number(ctx.match[1]), ctx.match[2] as 'PL_RU' | 'RU_PL');
   });
 
   bot.callbackQuery(CALLBACK.sessionResume, async (ctx) => {

@@ -1,5 +1,6 @@
 import type { AppContext } from './context.js';
 import { handleAdminInput } from './screens/admin.js';
+import { handleTypingCardInput } from './screens/learn.js';
 import { handleVocabularyInput } from './screens/vocabulary.js';
 import { pendingInput } from './state.js';
 
@@ -7,7 +8,7 @@ import { pendingInput } from './state.js';
 export async function handleTextInput(ctx: AppContext, text: string): Promise<boolean> {
   const pending = pendingInput.get(ctx.appUser.id);
   if (!pending) {
-    return false;
+    return handleTypingCardInput(ctx, text);
   }
 
   if (

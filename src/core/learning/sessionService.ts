@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PrismaTransaction } from '../../db/types.js';
 import type { ConfigService, EconomySettings } from '../economy/config.js';
 import { generateTest } from '../test/generator.js';
-import { isCategoryEligible } from '../test/normalize.js';
+import { isCategoryEligible, normalizeTranslation } from '../test/normalize.js';
 import { QUESTION_COUNT } from '../test/weights.js';
 import { localDayRange, toLocalDate } from '../time.js';
 import {
@@ -64,7 +64,7 @@ export interface CardView {
   position: number;
   answeredCount: number;
   plannedCount: number;
-  mode: 'FLASHCARDS' | 'TEST';
+  mode: 'FLASHCARDS' | 'TEST' | 'TYPING';
   options: TestOption[] | null;
   /** Итог по уже отвеченным вопросам теста по порядку позиций; null для FLASHCARDS. */
   testResults: boolean[] | null;
@@ -115,6 +115,36 @@ export type AnswerResult =
         answeredCount: number;
         plannedCount: number;
       } | null;
+    };
+
+/** Результат режима «Написание»: всегда показывает правильный ответ (§4.2). */
+export type TypedAnswerResult =
+  | { accepted: false }
+  | {
+      accepted: true;
+      completed: false;
+      isCorrect: boolean;
+      reveal: {
+        promptText: string;
+        translationText: string;
+        direction: Direction;
+        answeredCount: number;
+        plannedCount: number;
+      };
+    }
+  | {
+      accepted: true;
+      completed: true;
+      isCorrect: boolean;
+      sessionId: number;
+      summary: CompletionSummary;
+      reveal: {
+        promptText: string;
+        translationText: string;
+        direction: Direction;
+        answeredCount: number;
+        plannedCount: number;
+      };
     };
 
 /** Видимость контента: системное + собственное, чужое недоступно (§3.3). */
@@ -257,7 +287,7 @@ export class SessionService {
       promptText: card.promptText,
       direction: (session.direction ?? 'PL_RU') as Direction,
       position: card.position,
-      mode: isTest ? 'TEST' : 'FLASHCARDS',
+      mode: isTest ? 'TEST' : session.mode === 'TYPING' ? 'TYPING' : 'FLASHCARDS',
       options: parseOptions(card.options),
       answeredCount: session.answeredCount,
       plannedCount: session.plannedCount,
@@ -273,6 +303,7 @@ export class SessionService {
     userId: number,
     categoryId: number,
     direction: Direction,
+    mode: 'FLASHCARDS' | 'TYPING' = 'FLASHCARDS',
   ): Promise<StartSessionResult> {
     const now = this.deps.clock.now();
 
@@ -333,7 +364,7 @@ export class SessionService {
           const session = await tx.session.create({
             data: {
               userId,
-              mode: 'FLASHCARDS',
+              mode,
               categoryId,
               direction,
               plannedCount: plan.length,
@@ -377,16 +408,34 @@ export class SessionService {
    * Принимает ответ ровно один раз: атомарный UPDATE ... WHERE answeredAt IS NULL (§5.1).
    * Telegram не вызывается внутри транзакции.
    */
-  async answerCard(
+  /**
+   * Общее ядро для кнопок «Знаю/Не знаю» и режима «Написание»: `resolveAnswer`
+   * получает загруженную карточку и решает, что засчитать — KNOW или UNKNOWN.
+   */
+  private async recordAnswer(
     userId: number,
     cardId: number,
-    answer: AnswerKind,
     actionId: string,
-  ): Promise<AnswerResult> {
+    resolveAnswer: (card: { promptText: string; translationText: string | null }) => AnswerKind,
+  ): Promise<
+    | { accepted: false }
+    | {
+        accepted: true;
+        answer: AnswerKind;
+        completed: boolean;
+        sessionId: number;
+        summary: CompletionSummary | null;
+        translationText: string | null;
+        promptText: string;
+        direction: Direction;
+        answeredCount: number;
+        plannedCount: number;
+      }
+  > {
     const now = this.deps.clock.now();
     const economy = await this.deps.config.economy();
 
-    const result = await withWriteRetry(() =>
+    return withWriteRetry(() =>
       this.deps.prisma.$transaction(async (tx) => {
         const card = await tx.sessionCard.findUnique({
           where: { id: cardId },
@@ -415,6 +464,8 @@ export class SessionService {
         if (!card || card.session.userId !== userId || card.session.status !== 'ACTIVE') {
           return { accepted: false as const };
         }
+
+        const answer = resolveAnswer(card);
 
         const claimed = await tx.sessionCard.updateMany({
           where: { id: cardId, answeredAt: null },
@@ -516,6 +567,7 @@ export class SessionService {
 
         return {
           accepted: true as const,
+          answer,
           completed,
           sessionId: card.session.id,
           summary,
@@ -527,10 +579,34 @@ export class SessionService {
         };
       }),
     );
+  }
+
+  /**
+   * Принимает ответ ровно один раз: атомарный UPDATE ... WHERE answeredAt IS NULL (§5.1).
+   * Telegram не вызывается внутри транзакции.
+   */
+  async answerCard(
+    userId: number,
+    cardId: number,
+    answer: AnswerKind,
+    actionId: string,
+  ): Promise<AnswerResult> {
+    const result = await this.recordAnswer(userId, cardId, actionId, () => answer);
 
     if (!result.accepted) {
       return { accepted: false };
     }
+
+    const reveal =
+      answer === 'UNKNOWN' && result.translationText !== null
+        ? {
+            promptText: result.promptText,
+            translationText: result.translationText,
+            direction: result.direction,
+            answeredCount: result.answeredCount,
+            plannedCount: result.plannedCount,
+          }
+        : null;
 
     if (result.completed && result.summary) {
       return {
@@ -538,16 +614,7 @@ export class SessionService {
         completed: true,
         sessionId: result.sessionId,
         summary: result.summary,
-        reveal:
-          answer === 'UNKNOWN' && result.translationText !== null
-            ? {
-                promptText: result.promptText,
-                translationText: result.translationText,
-                direction: result.direction,
-                answeredCount: result.answeredCount,
-                plannedCount: result.plannedCount,
-              }
-            : null,
+        reveal,
       };
     }
 
@@ -556,21 +623,52 @@ export class SessionService {
       return { accepted: false };
     }
 
-    return {
-      accepted: true,
-      completed: false,
-      card,
-      reveal:
-        answer === 'UNKNOWN' && result.translationText !== null
-          ? {
-              promptText: result.promptText,
-              translationText: result.translationText,
-              direction: result.direction,
-              answeredCount: result.answeredCount,
-              plannedCount: result.plannedCount,
-            }
-          : null,
+    return { accepted: true, completed: false, card, reveal };
+  }
+
+  /**
+   * Режим «Написание»: пользователь печатает перевод текстом, сверка идёт без
+   * учёта регистра и лишних пробелов (§4.2). Правильный ответ приравнивается
+   * к «Знаю», неправильный — к «Не знаю»; прогресс слова считается так же.
+   */
+  async answerTypedCard(
+    userId: number,
+    cardId: number,
+    rawInput: string,
+    actionId: string,
+  ): Promise<TypedAnswerResult> {
+    let isCorrect = false;
+
+    const result = await this.recordAnswer(userId, cardId, actionId, (card) => {
+      isCorrect =
+        normalizeTranslation(rawInput) === normalizeTranslation(card.translationText ?? '');
+      return isCorrect ? 'KNOW' : 'UNKNOWN';
+    });
+
+    if (!result.accepted) {
+      return { accepted: false };
+    }
+
+    const reveal = {
+      promptText: result.promptText,
+      translationText: result.translationText ?? '',
+      direction: result.direction,
+      answeredCount: result.answeredCount,
+      plannedCount: result.plannedCount,
     };
+
+    if (result.completed && result.summary) {
+      return {
+        accepted: true,
+        completed: true,
+        isCorrect,
+        sessionId: result.sessionId,
+        summary: result.summary,
+        reveal,
+      };
+    }
+
+    return { accepted: true, completed: false, isCorrect, reveal };
   }
 
   /** Общая для карточек и теста часть: стрик, награда и сюрприз в той же транзакции. */

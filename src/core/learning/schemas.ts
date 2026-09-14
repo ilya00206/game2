@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SESSION_MODES = ['FLASHCARDS', 'TEST'] as const;
+export const SESSION_MODES = ['FLASHCARDS', 'TEST', 'TYPING'] as const;
 export type SessionMode = (typeof SESSION_MODES)[number];
 
 export const SESSION_STATUSES = ['ACTIVE', 'COMPLETED', 'ABANDONED'] as const;

@@ -9,6 +9,7 @@ import {
   categoryCallback,
   directionCallback,
   optionCallback,
+  typingCallback,
 } from '../keyboards.js';
 import { editOrReply } from '../ui.js';
 import { showMainMenu } from './menu.js';
@@ -30,7 +31,12 @@ export function testProgressBar(results: boolean[], planned: number): string {
 
 function cardText(card: CardView, translation?: string): string {
   const flag = card.direction === 'PL_RU' ? '🇵🇱' : '🇷🇺';
-  const header = card.mode === 'TEST' ? '🎯 Как это переводится?\n\n' : '';
+  const header =
+    card.mode === 'TEST'
+      ? '🎯 Как это переводится?\n\n'
+      : card.mode === 'TYPING'
+        ? '✍️ Напиши перевод:\n\n'
+        : '';
   const word = translation
     ? `${escapeHtml(card.promptText)} — ${escapeHtml(translation)}`
     : escapeHtml(card.promptText);
@@ -47,6 +53,10 @@ function cardKeyboard(card: CardView): InlineKeyboard {
       keyboard.text(option.label, optionCallback(card.cardId, index)).row();
     });
     return keyboard.text('⏹️ Закончить', CALLBACK.sessionFinish);
+  }
+
+  if (card.mode === 'TYPING') {
+    return new InlineKeyboard().text('⏹️ Закончить', CALLBACK.sessionFinish);
   }
 
   return new InlineKeyboard()
@@ -145,6 +155,10 @@ export async function showCategorySummary(ctx: AppContext, categoryId: number): 
     .text('🇵🇱 польский', directionCallback(categoryId, 'PL_RU'))
     .text('🇷🇺 русский', directionCallback(categoryId, 'RU_PL'))
     .row()
+    .text('✍️ Польский → русский', typingCallback(categoryId, 'PL_RU'))
+    .row()
+    .text('✍️ Русский → польский', typingCallback(categoryId, 'RU_PL'))
+    .row()
     .text('⬅️ Назад', CALLBACK.menuLearn);
 
   const text = [
@@ -154,7 +168,7 @@ export async function showCategorySummary(ctx: AppContext, categoryId: number): 
     `Осталось выучить: <b>${summary.remaining}</b>`,
     `Нужно повторить: <b>${summary.toRepeat}</b>`,
     '',
-    'На каком языке показывать слово?',
+    'Карточки (Знаю/Не знаю) или напиши перевод сам?',
   ].join('\n');
 
   await editOrReply(ctx, text, keyboard);
@@ -169,6 +183,31 @@ export async function startSession(
     ctx.appUser.id,
     categoryId,
     direction,
+  );
+
+  if (!result.ok) {
+    if (result.reason === 'NO_WORDS') {
+      const text = await ctx.services.content.render('ui.session.no_words', ctx.appUser.id);
+      await editOrReply(ctx, text, backToMenuKeyboard());
+      return;
+    }
+    await showLearnMenu(ctx);
+    return;
+  }
+
+  await renderCard(ctx, result.card);
+}
+
+export async function startTypingSession(
+  ctx: AppContext,
+  categoryId: number,
+  direction: 'PL_RU' | 'RU_PL',
+): Promise<void> {
+  const result = await ctx.services.sessions.startFlashcardSession(
+    ctx.appUser.id,
+    categoryId,
+    direction,
+    'TYPING',
   );
 
   if (!result.ok) {
@@ -265,6 +304,91 @@ async function showReveal(
     : backToMenuKeyboard();
 
   await editOrReply(ctx, text, keyboard);
+}
+
+/** Ответ печатается текстом, поэтому и правильный, и неправильный вариант ведут дальше (§4.2). */
+function typedResultText(
+  reveal: {
+    promptText: string;
+    translationText: string;
+    direction: CardView['direction'];
+    answeredCount: number;
+    plannedCount: number;
+  },
+  isCorrect: boolean,
+): string {
+  const flag = reveal.direction === 'PL_RU' ? '🇵🇱' : '🇷🇺';
+  const header = isCorrect ? '✅ Правильно! Умница ❤️\n\n' : '📝 Правильный ответ:\n\n';
+  const word = `${escapeHtml(reveal.promptText)} — ${escapeHtml(reveal.translationText)}`;
+  const bar = progressBar(reveal.answeredCount, reveal.plannedCount);
+  return `${header}${flag} <b>${word}</b>\n\n${bar}`;
+}
+
+async function showTypedResult(
+  ctx: AppContext,
+  reveal: {
+    promptText: string;
+    translationText: string;
+    direction: CardView['direction'];
+    answeredCount: number;
+    plannedCount: number;
+  },
+  isCorrect: boolean,
+  canContinue = true,
+): Promise<void> {
+  const text = typedResultText(reveal, isCorrect);
+
+  const keyboard = canContinue
+    ? new InlineKeyboard()
+        .text('▶️ Дальше', CALLBACK.sessionResume)
+        .row()
+        .text('⏹️ Закончить', CALLBACK.sessionFinish)
+    : backToMenuKeyboard();
+
+  await editOrReply(ctx, text, keyboard);
+}
+
+export async function handleTypedAnswer(
+  ctx: AppContext,
+  cardId: number,
+  rawInput: string,
+  actionId: string,
+): Promise<void> {
+  const result = await ctx.services.sessions.answerTypedCard(
+    ctx.appUser.id,
+    cardId,
+    rawInput,
+    actionId,
+  );
+
+  if (!result.accepted) {
+    return;
+  }
+
+  if (result.completed) {
+    await showTypedResult(ctx, result.reveal, result.isCorrect, false);
+    await showCompletion(ctx, result.summary, { editCurrent: false });
+    return;
+  }
+
+  await showTypedResult(ctx, result.reveal, result.isCorrect);
+}
+
+/** Разбор свободного текста: обрабатывается только когда ждём ответ режима «Написание» (§4.2). */
+export async function handleTypingCardInput(ctx: AppContext, text: string): Promise<boolean> {
+  const active = await ctx.services.sessions.getActiveSession(ctx.appUser.id);
+  if (!active || active.mode !== 'TYPING') {
+    return false;
+  }
+
+  const card = await ctx.services.sessions.currentCard(active.sessionId);
+  if (!card) {
+    return false;
+  }
+
+  const actionId = `text:${ctx.chat?.id ?? ctx.appUser.id}:${ctx.msg?.message_id ?? Date.now()}`;
+  await handleTypedAnswer(ctx, card.cardId, text, actionId);
+  return true;
 }
 
 export async function handleFinish(ctx: AppContext): Promise<void> {

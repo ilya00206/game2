@@ -310,3 +310,69 @@ describe('сессия карточек', () => {
     expect(await prisma.event.count()).toBe(0);
   });
 });
+
+describe('режим «Написание»', () => {
+  it('создаёт сессию с mode = TYPING', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU', 'TYPING');
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    expect(started.card.mode).toBe('TYPING');
+
+    const session = await prisma.session.findUnique({
+      where: { id: started.sessionId },
+      select: { mode: true },
+    });
+    expect(session?.mode).toBe('TYPING');
+  });
+
+  it('засчитывает правильный ответ без учёта регистра и лишних пробелов', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU', 'TYPING');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    const expected = started.card.promptText.replace('slowo', 'слово');
+    const result = await service.answerTypedCard(
+      userId,
+      started.card.cardId,
+      `  ${expected.toUpperCase()}  `,
+      'action-1',
+    );
+
+    if (!result.accepted || result.completed) throw new Error('ответ не принят');
+    expect(result.isCorrect).toBe(true);
+    expect(result.reveal.translationText).toBe(expected);
+
+    const progress = await prisma.userWord.findFirst({ where: { userId } });
+    expect(progress?.timesKnown).toBe(1);
+  });
+
+  it('неверный ответ показывает правильный перевод и учитывается как «Не знаю»', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU', 'TYPING');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    const result = await service.answerTypedCard(
+      userId,
+      started.card.cardId,
+      'совсем не то слово',
+      'action-1',
+    );
+
+    if (!result.accepted || result.completed) throw new Error('ответ не принят');
+    expect(result.isCorrect).toBe(false);
+    expect(result.reveal.translationText.startsWith('слово')).toBe(true);
+
+    const progress = await prisma.userWord.findFirst({ where: { userId } });
+    expect(progress?.timesUnknown).toBe(1);
+  });
+
+  it('повторный ответ по тому же actionId игнорируется', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU', 'TYPING');
+    if (!started.ok) throw new Error('сессия не создана');
+
+    const first = await service.answerTypedCard(userId, started.card.cardId, 'x', 'action-1');
+    const duplicate = await service.answerTypedCard(userId, started.card.cardId, 'x', 'action-2');
+
+    expect(first.accepted).toBe(true);
+    expect(duplicate.accepted).toBe(false);
+  });
+});
