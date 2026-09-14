@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context.js';
-import { SHOP_ITEMS } from '../../core/economy/config.js';
+import { SHOP_ITEMS, type ShopItem } from '../../core/economy/config.js';
 import { formatCurrency } from '../../core/economy/currency.js';
 import { SHOP_ITEM_TITLES } from '../../core/economy/shopService.js';
 import { backToMenuKeyboard, buyCallback, CALLBACK } from '../keyboards.js';
