@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context.js';
-import { SHOP_ITEMS, type ShopItem } from '../../core/economy/config.js';
+import { SHOP_ITEMS } from '../../core/economy/config.js';
 import { formatCurrency } from '../../core/economy/currency.js';
 import { SHOP_ITEM_TITLES } from '../../core/economy/shopService.js';
 import { backToMenuKeyboard, buyCallback, CALLBACK } from '../keyboards.js';
@@ -16,7 +16,7 @@ export async function showShop(ctx: AppContext): Promise<void> {
   ]);
 
   const keyboard = new InlineKeyboard();
-  for (const item of SHOP_ITEMS as ShopItem[]) {
+  for (const item of SHOP_ITEMS) {
     keyboard.text(`${SHOP_ITEM_TITLES[item]} · ${prices[item]}${currency.icon}`, buyCallback(item));
     keyboard.row();
   }
