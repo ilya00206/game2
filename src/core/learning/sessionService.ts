@@ -133,22 +133,17 @@ export type TypedAnswerResult =
       reveal: RevealView;
     };
 
-/** Видимость контента: системное + собственное, чужое недоступно (§3.3). */
-function visibleOwner(userId: number) {
-  return [{ ownerId: null }, { ownerId: userId }];
-}
-
 export class SessionService {
   constructor(private readonly deps: SessionDeps) {}
 
   async listCategories(userId: number): Promise<CategoryListItem[]> {
     const categories = await this.deps.prisma.category.findMany({
-      where: { isActive: true, OR: visibleOwner(userId) },
+      where: { isActive: true },
       select: {
         id: true,
         name: true,
         _count: {
-          select: { words: { where: { isActive: true, OR: visibleOwner(userId) } } },
+          select: { words: { where: { isActive: true } } },
         },
       },
       orderBy: { name: 'asc' },
@@ -163,7 +158,7 @@ export class SessionService {
 
   async categorySummary(userId: number, categoryId: number): Promise<CategorySummary> {
     const words = await this.deps.prisma.word.findMany({
-      where: { categoryId, isActive: true, OR: visibleOwner(userId) },
+      where: { categoryId, isActive: true },
       select: {
         userWords: {
           where: { userId },
@@ -296,7 +291,7 @@ export class SessionService {
     const now = this.deps.clock.now();
 
     const words = await this.deps.prisma.word.findMany({
-      where: { categoryId, isActive: true, OR: visibleOwner(userId) },
+      where: { categoryId, isActive: true },
       select: {
         id: true,
         polish: true,
@@ -779,11 +774,11 @@ export class SessionService {
     });
 
     const categories = await this.deps.prisma.category.findMany({
-      where: { isActive: true, OR: visibleOwner(userId) },
+      where: { isActive: true },
       select: {
         id: true,
         words: {
-          where: { isActive: true, OR: visibleOwner(userId) },
+          where: { isActive: true },
           select: {
             id: true,
             polish: true,

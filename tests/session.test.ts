@@ -316,12 +316,12 @@ describe('сессия карточек', () => {
     expect(summary.toRepeat).toBe(1);
   });
 
-  it('не показывает чужой пользовательский контент', async () => {
+  it('показывает пользовательский контент другого пользователя как общий', async () => {
     const other = await prisma.user.create({ data: { telegramId: 2n }, select: { id: true } });
     await prisma.category.create({ data: { name: 'Личное', ownerId: other.id } });
 
     const categories = await service.listCategories(userId);
-    expect(categories.map((item) => item.name)).toEqual(['Цвета']);
+    expect(categories.map((item) => item.name)).toEqual(['Личное', 'Цвета']);
   });
 
   it('при EVENT_LOG_ENABLED=false не создаёт ни одной строки Event', async () => {

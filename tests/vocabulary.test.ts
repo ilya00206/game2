@@ -89,12 +89,12 @@ describe('пользовательский словарь', () => {
     });
   });
 
-  it('не добавляет слово в чужую категорию', async () => {
+  it('позволяет добавить слово в категорию другого пользователя', async () => {
     const foreign = await vocabulary.createCategory(otherUserId, 'Личное');
     if (!foreign.ok) throw new Error('категория не создана');
 
     const result = await vocabulary.addWord(userId, foreign.categoryId, 'kot', 'кот');
-    expect(result).toEqual({ ok: false, reason: 'CATEGORY_NOT_FOUND' });
+    expect(result.ok).toBe(true);
   });
 
   it('создаёт собственную категорию и запрещает её дубликат', async () => {

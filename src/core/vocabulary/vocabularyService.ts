@@ -38,11 +38,11 @@ function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
-/** Пользовательский контент: добавление и деактивация только своего (§3.3, §4.4). */
+/** Пользовательский контент общий для всех: добавление в любую активную категорию, деактивация только своего (§3.3, §4.4). */
 export class VocabularyService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  /** Слово в системной категории всё равно принадлежит добавившему пользователю. */
+  /** Слово можно добавить в любую активную категорию; оно принадлежит добавившему пользователю. */
   async addWord(userId: number, categoryId: number, polish: string, russian: string): Promise<AddWordResult> {
     const parsed = wordInputSchema.safeParse({ polish, russian });
     if (!parsed.success) {
@@ -53,7 +53,6 @@ export class VocabularyService {
       where: {
         id: categoryId,
         isActive: true,
-        OR: [{ ownerId: null }, { ownerId: userId }],
       },
       select: { id: true },
     });
