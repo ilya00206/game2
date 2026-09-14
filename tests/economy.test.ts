@@ -251,6 +251,13 @@ describe('магазин', () => {
     expect(user.currencyBalance).toBe(5);
   });
 
+  it('покупка желания от тебя списывает 500 валюты', async () => {
+    await prisma.user.update({ where: { id: userId }, data: { currencyBalance: 500 } });
+
+    const result = await makeShop().buy(userId, 'WISH', 'req-wish');
+    expect(result).toMatchObject({ ok: true, item: 'WISH', cost: 500, balanceAfter: 0 });
+  });
+
   it('не позволяет уйти в минус', async () => {
     await prisma.user.update({ where: { id: userId }, data: { currencyBalance: 10 } });
 

@@ -33,6 +33,7 @@ export const economyConfigSchema = z.object({
   giftSmallPrice: z.number().int().min(0),
   giftSpecialPrice: z.number().int().min(0),
   shieldPrice: z.number().int().min(0),
+  wishPrice: z.number().int().min(0),
 });
 
 export const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

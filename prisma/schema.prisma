@@ -323,6 +323,7 @@ model EconomyConfig {
   giftSmallPrice     Int      @default(120)
   giftSpecialPrice   Int      @default(350)
   shieldPrice        Int      @default(25)
+  wishPrice          Int      @default(500)
   updatedAt          DateTime @updatedAt
   updatedById        Int?
 }

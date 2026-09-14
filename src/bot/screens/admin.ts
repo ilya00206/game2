@@ -16,6 +16,7 @@ const ECONOMY_FIELDS: { field: string; title: string }[] = [
   { field: 'giftSmallPrice', title: 'Маленький подарок' },
   { field: 'giftSpecialPrice', title: 'Особый подарок' },
   { field: 'shieldPrice', title: 'Щит' },
+  { field: 'wishPrice', title: 'Желание от тебя' },
 ];
 
 function adminBack(): InlineKeyboard {

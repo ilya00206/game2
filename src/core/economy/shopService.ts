@@ -14,6 +14,7 @@ export const SHOP_ITEM_TITLES: Record<ShopItem, string> = {
   GIFT_SMALL: '🎁 Маленький подарок',
   GIFT_SPECIAL: '💝 Особый подарок',
   SHIELD: '🛡️ Щит на стрик',
+  WISH: '✨ Желание от тебя',
 };
 
 export class ShopService {
@@ -25,6 +26,7 @@ export class ShopService {
       GIFT_SMALL: economy.giftSmallPrice,
       GIFT_SPECIAL: economy.giftSpecialPrice,
       SHIELD: economy.shieldPrice,
+      WISH: economy.wishPrice,
     };
   }
 

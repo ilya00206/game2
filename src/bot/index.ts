@@ -170,7 +170,7 @@ export function createBot(services: Services): Bot<AppContext> {
     await showShop(ctx);
   });
 
-  bot.callbackQuery(/^shop:buy:(GIFT_SMALL|GIFT_SPECIAL|SHIELD)$/, async (ctx) => {
+  bot.callbackQuery(/^shop:buy:(GIFT_SMALL|GIFT_SPECIAL|SHIELD|WISH)$/, async (ctx) => {
     const requestId = ctx.callbackQuery.id;
     await ctx.answerCallbackQuery();
     await handlePurchase(ctx, ctx.match[1] as ShopItem, requestId);

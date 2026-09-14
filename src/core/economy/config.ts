@@ -9,9 +9,10 @@ export interface EconomySettings {
   giftSmallPrice: number;
   giftSpecialPrice: number;
   shieldPrice: number;
+  wishPrice: number;
 }
 
-export const SHOP_ITEMS = ['GIFT_SMALL', 'GIFT_SPECIAL', 'SHIELD'] as const;
+export const SHOP_ITEMS = ['GIFT_SMALL', 'GIFT_SPECIAL', 'SHIELD', 'WISH'] as const;
 export type ShopItem = (typeof SHOP_ITEMS)[number];
 
 export const SINGLETON_ID = 1;
@@ -63,6 +64,7 @@ export class ConfigService {
         giftSmallPrice: true,
         giftSpecialPrice: true,
         shieldPrice: true,
+        wishPrice: true,
       },
     });
 
@@ -73,6 +75,7 @@ export class ConfigService {
       giftSmallPrice: 120,
       giftSpecialPrice: 350,
       shieldPrice: 25,
+      wishPrice: 500,
     };
 
     this.economyCache.set(ECONOMY_CACHE_KEY, value);
@@ -88,6 +91,8 @@ export class ConfigService {
         return economy.giftSpecialPrice;
       case 'SHIELD':
         return economy.shieldPrice;
+      case 'WISH':
+        return economy.wishPrice;
     }
   }
 
