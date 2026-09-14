@@ -10,10 +10,11 @@ export async function showMainMenu(ctx: AppContext): Promise<void> {
   const today = toLocalDate(clock.now(), ctx.appUser.timezone);
   // Сверка стрика перед показом (§3.2): подтягивает пропущенные дни и списание щитов.
   const streak = await streaks.reconcile(ctx.appUser.id);
-  const [title, currency, wordOfDay] = await Promise.all([
+  const [title, currency, wordOfDay, earlyBooked] = await Promise.all([
     content.render('ui.menu.title', ctx.appUser.id),
     config.currency(),
     admin.getWordOfDay(today),
+    streaks.hasEarlyBooking(ctx.appUser.id),
   ]);
 
   const balance = formatCurrencyAmount(ctx.appUser.currencyBalance, currency);
@@ -23,6 +24,7 @@ export async function showMainMenu(ctx: AppContext): Promise<void> {
     `${escapeHtml(currency.icon)} Баланс: <b>${escapeHtml(balance)}</b>`,
     `🔥 Серия: <b>${streak.currentStreak} ${streakWord(streak.currentStreak)}</b>`,
     `🛡️ Щиты: <b>${streak.shields}</b>`,
+    ...(earlyBooked ? ['📅 Завтра забронировано — стрик защищён, даже если пропустишь день'] : []),
     ...(wordOfDay
       ? ['', `❤️ Слово дня: <b>${escapeHtml(wordOfDay.polish)}</b> — ${escapeHtml(wordOfDay.russian)}`]
       : []),

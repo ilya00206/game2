@@ -51,4 +51,21 @@ export class StreakManager {
       ),
     );
   }
+
+  /** Есть ли уже действующая бронь `EARLY` на будущую дату (для отображения в меню). */
+  async hasEarlyBooking(userId: number): Promise<boolean> {
+    const now = this.deps.clock.now();
+    const user = await this.deps.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const today = toLocalDate(now, user.timezone);
+
+    const future = await this.deps.prisma.userDay.findFirst({
+      where: { userId, status: 'EARLY', localDate: { gt: today } },
+      select: { localDate: true },
+    });
+
+    return future !== null;
+  }
 }
