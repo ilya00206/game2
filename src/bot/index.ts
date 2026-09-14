@@ -23,12 +23,16 @@ import {
 import { handleTextInput } from './textInput.js';
 import {
   confirmAdminAction,
+  deleteVoice,
+  handleAdminVoice,
   isContentKey,
   promptCurrencyEdit,
   promptEconomyEdit,
   promptGrant,
   promptMessage,
+  promptNextVoice,
   promptStreak,
+  promptVoice,
   promptWordOfDay,
   showAdminMenu,
   showCurrencyConfig,
@@ -38,6 +42,8 @@ import {
   showTextVariants,
   showUserCard,
   showUsers,
+  showVoiceCategories,
+  showVoiceWords,
   showWordOfDay,
 } from './screens/admin.js';
 import { pendingInput } from './state.js';
@@ -163,6 +169,11 @@ export function createBot(services: Services): Bot<AppContext> {
 
   bot.on('message:text', async (ctx) => {
     await handleTextInput(ctx, ctx.message.text);
+  });
+
+  // Голосовые нужны только админу для озвучки слов (§4.8).
+  bot.on('message:voice', async (ctx) => {
+    await handleAdminVoice(ctx, ctx.message.voice.file_id);
   });
 
   bot.callbackQuery(CALLBACK.menuShop, async (ctx) => {
@@ -342,6 +353,31 @@ export function createBot(services: Services): Bot<AppContext> {
     await ctx.answerCallbackQuery();
     await ctx.services.admin.removeWordOfDay(ctx.match[1] as string);
     await showWordOfDay(ctx);
+  });
+
+  bot.callbackQuery(CALLBACK.adminVoice, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await showVoiceCategories(ctx);
+  });
+
+  bot.callbackQuery(/^admin:vcat:(\d+):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await showVoiceWords(ctx, Number(ctx.match[1]), Number(ctx.match[2]));
+  });
+
+  bot.callbackQuery(/^admin:vword:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await promptVoice(ctx, Number(ctx.match[1]));
+  });
+
+  bot.callbackQuery(/^admin:vnext:(\d+):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await promptNextVoice(ctx, Number(ctx.match[1]), Number(ctx.match[2]));
+  });
+
+  bot.callbackQuery(/^admin:vdel:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await deleteVoice(ctx, Number(ctx.match[1]));
   });
 
   bot.catch((error) => {

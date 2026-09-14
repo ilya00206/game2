@@ -113,6 +113,30 @@ describe('сессия карточек', () => {
     expect(await prisma.session.count({ where: { status: 'ACTIVE' } })).toBe(1);
   });
 
+  it('отдаёт озвучку слова в карточке и на экране ответа', async () => {
+    await prisma.word.updateMany({ where: { categoryId }, data: { voiceFileId: 'voice-1' } });
+
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    expect(started.card.voiceFileId).toBe('voice-1');
+
+    const answered = await service.answerCard(userId, started.card.cardId, 'UNKNOWN', 'act-1');
+    expect(answered.accepted).toBe(true);
+    if (!answered.accepted) return;
+
+    expect(answered.reveal?.voiceFileId).toBe('voice-1');
+  });
+
+  it('оставляет озвучку пустой, если админ её не записывал', async () => {
+    const started = await service.startFlashcardSession(userId, categoryId, 'PL_RU');
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    expect(started.card.voiceFileId).toBeNull();
+  });
+
   it('два параллельных запуска создают ровно одну активную сессию', async () => {
     const results = await Promise.allSettled([
       createService().startFlashcardSession(userId, categoryId, 'PL_RU'),

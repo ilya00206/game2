@@ -12,13 +12,15 @@ export type PendingInput =
   | { kind: 'ADMIN_TEXT_ADD'; key: ContentKey }
   | { kind: 'ADMIN_WORD_OF_DAY' }
   | { kind: 'ADMIN_WORD_OF_DAY_RUSSIAN'; date: string; polish: string }
-  | { kind: 'ADMIN_MESSAGE'; targetUserId: number };
+  | { kind: 'ADMIN_MESSAGE'; targetUserId: number }
+  | { kind: 'ADMIN_VOICE'; categoryId: number; wordId: number };
 
 /** Разобранное действие ждёт подтверждения; requestId берётся с кнопки подтверждения. */
 export type PendingConfirm =
   | { kind: 'ADMIN_GRANT'; targetUserId: number; amount: number; reason: string }
   | { kind: 'ADMIN_STREAK'; targetUserId: number; value: number; reason: string }
-  | { kind: 'ADMIN_MESSAGE'; targetUserId: number; text: string };
+  | { kind: 'ADMIN_MESSAGE'; targetUserId: number; text: string }
+  | { kind: 'ADMIN_VOICE'; categoryId: number; wordId: number; voiceFileId: string };
 
 const TTL_MS = 10 * 60 * 1000;
 

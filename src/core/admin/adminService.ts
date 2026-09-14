@@ -64,6 +64,42 @@ export type WordOfDayResult =
   | { ok: true }
   | { ok: false; reason: 'INVALID_DATE' | 'INVALID_WORD' };
 
+/** file_id Telegram — непрозрачная строка, поэтому проверяется только длина. */
+export const voiceFileIdSchema = z.string().trim().min(1).max(255);
+
+export interface AdminVoiceCategory {
+  id: number;
+  name: string;
+  total: number;
+  withVoice: number;
+}
+
+export interface AdminVoiceWord {
+  id: number;
+  categoryId: number;
+  polish: string;
+  russian: string;
+  hasVoice: boolean;
+  voiceFileId: string | null;
+}
+
+function toVoiceWord(word: {
+  id: number;
+  categoryId: number;
+  polish: string;
+  russian: string;
+  voiceFileId: string | null;
+}): AdminVoiceWord {
+  return {
+    id: word.id,
+    categoryId: word.categoryId,
+    polish: word.polish,
+    russian: word.russian,
+    hasVoice: word.voiceFileId !== null,
+    voiceFileId: word.voiceFileId,
+  };
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
@@ -346,6 +382,99 @@ export class AdminService {
     }
 
     await this.prisma.word.update({ where: { id: wordId }, data: { isActive } });
+    return true;
+  }
+
+  /** Категории со счётчиком озвученных слов — для экрана произношения (§4.8). */
+  async listVoiceCategories(): Promise<AdminVoiceCategory[]> {
+    const categories = await this.prisma.category.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        words: { where: { isActive: true }, select: { voiceFileId: true } },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    return categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      total: category.words.length,
+      withVoice: category.words.filter((word) => word.voiceFileId !== null).length,
+    }));
+  }
+
+  async listVoiceWords(categoryId: number): Promise<AdminVoiceWord[]> {
+    const words = await this.prisma.word.findMany({
+      where: { categoryId, isActive: true },
+      select: { id: true, categoryId: true, polish: true, russian: true, voiceFileId: true },
+      orderBy: { id: 'asc' },
+    });
+
+    return words.map(toVoiceWord);
+  }
+
+  async getVoiceWord(wordId: number): Promise<AdminVoiceWord | null> {
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+      select: { id: true, categoryId: true, polish: true, russian: true, voiceFileId: true },
+    });
+
+    return word ? toVoiceWord(word) : null;
+  }
+
+  /** Следующее неозвученное слово категории; afterWordId позволяет идти по порядку. */
+  async nextWordWithoutVoice(
+    categoryId: number,
+    afterWordId = 0,
+  ): Promise<AdminVoiceWord | null> {
+    const select = { id: true, categoryId: true, polish: true, russian: true, voiceFileId: true };
+    const where = { categoryId, isActive: true, voiceFileId: null };
+
+    const next =
+      (await this.prisma.word.findFirst({
+        where: { ...where, id: { gt: afterWordId } },
+        select,
+        orderBy: { id: 'asc' },
+      })) ??
+      (await this.prisma.word.findFirst({ where, select, orderBy: { id: 'asc' } }));
+
+    return next ? toVoiceWord(next) : null;
+  }
+
+  async setWordVoice(wordId: number, voiceFileId: string): Promise<boolean> {
+    const parsed = voiceFileIdSchema.safeParse(voiceFileId);
+    if (!parsed.success) {
+      return false;
+    }
+
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+      select: { id: true },
+    });
+    if (!word) {
+      return false;
+    }
+
+    await withWriteRetry(() =>
+      this.prisma.word.update({ where: { id: wordId }, data: { voiceFileId: parsed.data } }),
+    );
+    return true;
+  }
+
+  async removeWordVoice(wordId: number): Promise<boolean> {
+    const word = await this.prisma.word.findUnique({
+      where: { id: wordId },
+      select: { id: true },
+    });
+    if (!word) {
+      return false;
+    }
+
+    await withWriteRetry(() =>
+      this.prisma.word.update({ where: { id: wordId }, data: { voiceFileId: null } }),
+    );
     return true;
   }
 

@@ -410,3 +410,59 @@ describe('слово дня и контент', () => {
     expect(words.every((word) => !word.isActive)).toBe(true);
   });
 });
+
+describe('озвучка слов', () => {
+  it('сохраняет и удаляет произношение слова', async () => {
+    const categoryId = await seedCategory(prisma, 'Cvety', 2);
+    const [word] = await admin.listVoiceWords(categoryId);
+
+    expect(word?.hasVoice).toBe(false);
+    expect(await admin.setWordVoice(word!.id, 'AwACAgIAAxkBAAI')).toBe(true);
+    expect((await admin.getVoiceWord(word!.id))?.voiceFileId).toBe('AwACAgIAAxkBAAI');
+
+    expect(await admin.removeWordVoice(word!.id)).toBe(true);
+    expect((await admin.getVoiceWord(word!.id))?.hasVoice).toBe(false);
+  });
+
+  it('отклоняет пустой file_id и несуществующее слово', async () => {
+    const categoryId = await seedCategory(prisma, 'Cvety', 1);
+    const [word] = await admin.listVoiceWords(categoryId);
+
+    expect(await admin.setWordVoice(word!.id, '   ')).toBe(false);
+    expect(await admin.setWordVoice(999_999, 'file-id')).toBe(false);
+  });
+
+  it('считает озвученные слова по категориям', async () => {
+    const categoryId = await seedCategory(prisma, 'Cvety', 3);
+    const words = await admin.listVoiceWords(categoryId);
+    await admin.setWordVoice(words[0]!.id, 'file-1');
+
+    const categories = await admin.listVoiceCategories();
+    const row = categories.find((item) => item.id === categoryId);
+
+    expect(row).toMatchObject({ total: 3, withVoice: 1 });
+  });
+
+  it('ведёт по категории к следующему неозвученному слову и возвращается в начало', async () => {
+    const categoryId = await seedCategory(prisma, 'Cvety', 3);
+    const words = await admin.listVoiceWords(categoryId);
+    await admin.setWordVoice(words[1]!.id, 'file-2');
+
+    expect(await admin.nextWordWithoutVoice(categoryId, words[0]!.id)).toMatchObject({
+      id: words[2]!.id,
+    });
+    // после последнего слова поиск начинается сначала
+    expect(await admin.nextWordWithoutVoice(categoryId, words[2]!.id)).toMatchObject({
+      id: words[0]!.id,
+    });
+  });
+
+  it('возвращает null, когда вся категория озвучена', async () => {
+    const categoryId = await seedCategory(prisma, 'Cvety', 2);
+    for (const word of await admin.listVoiceWords(categoryId)) {
+      await admin.setWordVoice(word.id, `file-${word.id}`);
+    }
+
+    expect(await admin.nextWordWithoutVoice(categoryId)).toBeNull();
+  });
+});

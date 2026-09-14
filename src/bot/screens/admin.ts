@@ -4,10 +4,19 @@ import { CONTENT_KEYS, type ContentKey, isContentKey } from '../../content/keys.
 import { escapeHtml } from '../../content/service.js';
 import { formatCurrency } from '../../core/economy/currency.js';
 import { toLocalDate } from '../../core/time.js';
-import { CALLBACK } from '../keyboards.js';
+import {
+  CALLBACK,
+  voiceCategoryCallback,
+  voiceDeleteCallback,
+  voiceNextCallback,
+  voiceWordCallback,
+} from '../keyboards.js';
 import { logger } from '../../logger.js';
 import { pendingConfirm, pendingInput, type PendingInput } from '../state.js';
 import { editOrReply } from '../ui.js';
+
+/** Слов в категории бывает под сотню — список кнопок режется на страницы. */
+const VOICE_PAGE_SIZE = 20;
 
 const ECONOMY_FIELDS: { field: string; title: string }[] = [
   { field: 'flashcardReward', title: 'Награда за сессию' },
@@ -32,6 +41,8 @@ export async function showAdminMenu(ctx: AppContext): Promise<void> {
     .row()
     .text('📝 Тексты', CALLBACK.adminTexts)
     .text('❤️ Слово дня', CALLBACK.adminWordOfDay)
+    .row()
+    .text('🎙 Произношение', CALLBACK.adminVoice)
     .row()
     .text('⬅️ В меню', CALLBACK.menuRoot);
 
@@ -219,6 +230,158 @@ export async function promptWordOfDay(ctx: AppContext): Promise<void> {
   );
 }
 
+export async function showVoiceCategories(ctx: AppContext): Promise<void> {
+  const categories = await ctx.services.admin.listVoiceCategories();
+
+  const keyboard = new InlineKeyboard();
+  for (const category of categories) {
+    keyboard
+      .text(`${category.name} · ${category.withVoice}/${category.total}`, voiceCategoryCallback(category.id))
+      .row();
+  }
+  keyboard.text('⬅️ Админ', CALLBACK.menuAdmin);
+
+  await editOrReply(ctx, '🎙 Выбери категорию для озвучки:', keyboard);
+}
+
+export async function showVoiceWords(ctx: AppContext, categoryId: number, page: number): Promise<void> {
+  const words = await ctx.services.admin.listVoiceWords(categoryId);
+  const pageCount = Math.max(Math.ceil(words.length / VOICE_PAGE_SIZE), 1);
+  const current = Math.min(Math.max(page, 0), pageCount - 1);
+  const slice = words.slice(current * VOICE_PAGE_SIZE, (current + 1) * VOICE_PAGE_SIZE);
+
+  const keyboard = new InlineKeyboard();
+  for (const word of slice) {
+    keyboard.text(
+      `${word.hasVoice ? '✅' : '⬜'} ${word.polish} — ${word.russian}`,
+      voiceWordCallback(word.id),
+    );
+    if (word.hasVoice) {
+      keyboard.text('🗑', voiceDeleteCallback(word.id));
+    }
+    keyboard.row();
+  }
+
+  if (pageCount > 1) {
+    if (current > 0) {
+      keyboard.text('⬅️', voiceCategoryCallback(categoryId, current - 1));
+    }
+    if (current < pageCount - 1) {
+      keyboard.text('➡️', voiceCategoryCallback(categoryId, current + 1));
+    }
+    keyboard.row();
+  }
+
+  keyboard.text('⬅️ Категории', CALLBACK.adminVoice);
+
+  const withVoice = words.filter((word) => word.hasVoice).length;
+  const text = `🎙 Озвучено ${withVoice} из ${words.length} · стр. ${current + 1}/${pageCount}\n\nВыбери слово, чтобы записать произношение.`;
+
+  await editOrReply(ctx, text, keyboard);
+}
+
+/** Ждём голосовое: пока вход открыт, любое voice-сообщение относится к этому слову. */
+export async function promptVoice(
+  ctx: AppContext,
+  wordId: number,
+  notice?: string,
+): Promise<void> {
+  const word = await ctx.services.admin.getVoiceWord(wordId);
+  if (!word) {
+    await showVoiceCategories(ctx);
+    return;
+  }
+
+  pendingConfirm.clear(ctx.appUser.id);
+  pendingInput.set(ctx.appUser.id, { kind: 'ADMIN_VOICE', categoryId: word.categoryId, wordId });
+
+  const keyboard = new InlineKeyboard()
+    .text('⏭ Следующее', voiceNextCallback(word.categoryId, word.id))
+    .row()
+    .text('⬅️ К словам', voiceCategoryCallback(word.categoryId));
+
+  const prefix = notice ? `${notice}\n\n` : '';
+  const status = word.hasVoice ? '\n\nСейчас озвучка уже есть — новая её заменит.' : '';
+
+  await editOrReply(
+    ctx,
+    `${prefix}🎙 Запиши голосовое с произношением:\n\n<b>${escapeHtml(word.polish)}</b> — ${escapeHtml(word.russian)}${status}`,
+    keyboard,
+  );
+}
+
+/** Переход к следующему неозвученному слову — чтобы идти по категории подряд. */
+export async function promptNextVoice(
+  ctx: AppContext,
+  categoryId: number,
+  afterWordId: number,
+  notice?: string,
+): Promise<void> {
+  const next = await ctx.services.admin.nextWordWithoutVoice(categoryId, afterWordId);
+
+  if (!next) {
+    pendingInput.clear(ctx.appUser.id);
+    const keyboard = new InlineKeyboard()
+      .text('⬅️ К словам', voiceCategoryCallback(categoryId))
+      .row()
+      .text('⬅️ Категории', CALLBACK.adminVoice);
+    const prefix = notice ? `${notice}\n\n` : '';
+    await editOrReply(ctx, `${prefix}Все слова категории озвучены ❤️`, keyboard);
+    return;
+  }
+
+  await promptVoice(ctx, next.id, notice);
+}
+
+export async function deleteVoice(ctx: AppContext, wordId: number): Promise<void> {
+  const word = await ctx.services.admin.getVoiceWord(wordId);
+  if (!word) {
+    await showVoiceCategories(ctx);
+    return;
+  }
+
+  await ctx.services.admin.removeWordVoice(wordId);
+  await showVoiceWords(ctx, word.categoryId, 0);
+}
+
+/** Голосовое админа: сохраняется только после явного подтверждения. */
+export async function handleAdminVoice(ctx: AppContext, voiceFileId: string): Promise<boolean> {
+  if (!ctx.isAdmin) {
+    return false;
+  }
+
+  const pending = pendingInput.get(ctx.appUser.id);
+  if (pending?.kind !== 'ADMIN_VOICE') {
+    return false;
+  }
+
+  const word = await ctx.services.admin.getVoiceWord(pending.wordId);
+  if (!word) {
+    pendingInput.clear(ctx.appUser.id);
+    await ctx.reply('Слово не найдено — начни заново.');
+    return true;
+  }
+
+  pendingConfirm.set(ctx.appUser.id, {
+    kind: 'ADMIN_VOICE',
+    categoryId: pending.categoryId,
+    wordId: pending.wordId,
+    voiceFileId,
+  });
+
+  const keyboard = new InlineKeyboard()
+    .text('✅ Сохранить', CALLBACK.adminConfirm)
+    .text('🔁 Перезаписать', voiceWordCallback(pending.wordId))
+    .row()
+    .text('❌ Отмена', voiceCategoryCallback(pending.categoryId));
+
+  await ctx.reply(
+    `Сохранить это произношение для <b>${escapeHtml(word.polish)}</b> — ${escapeHtml(word.russian)}?`,
+    { parse_mode: 'HTML', reply_markup: keyboard },
+  );
+  return true;
+}
+
 /** Применяет подтверждённое действие; requestId — id кнопки подтверждения (§3.1). */
 export async function confirmAdminAction(ctx: AppContext, requestId: string): Promise<void> {
   const pending = pendingConfirm.get(ctx.appUser.id);
@@ -231,6 +394,16 @@ export async function confirmAdminAction(ctx: AppContext, requestId: string): Pr
 
   if (pending.kind === 'ADMIN_MESSAGE') {
     await sendAdminMessage(ctx, pending.targetUserId, pending.text, requestId);
+    return;
+  }
+
+  if (pending.kind === 'ADMIN_VOICE') {
+    const saved = await ctx.services.admin.setWordVoice(pending.wordId, pending.voiceFileId);
+    if (!saved) {
+      await editOrReply(ctx, 'Не получилось сохранить озвучку — слово не найдено.', adminBack());
+      return;
+    }
+    await promptNextVoice(ctx, pending.categoryId, pending.wordId, 'Озвучка сохранена ✅');
     return;
   }
 
@@ -470,6 +643,11 @@ export async function handleAdminInput(
 
       pendingInput.clear(ctx.appUser.id);
       await ctx.reply('Слово дня назначено ❤️');
+      return true;
+    }
+
+    case 'ADMIN_VOICE': {
+      await ctx.reply('Жду голосовое сообщение с произношением.');
       return true;
     }
 

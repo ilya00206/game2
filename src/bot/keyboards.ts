@@ -21,6 +21,7 @@ export const CALLBACK = {
   adminTexts: 'admin:texts',
   adminWordOfDay: 'admin:wod',
   adminWordOfDayAdd: 'admin:wod_add',
+  adminVoice: 'admin:voice',
   adminConfirm: 'admin:confirm',
 } as const;
 
@@ -39,6 +40,12 @@ export const addWordCategoryCallback = (categoryId: number): string => `vocab:ad
 export const deactivateWordCallback = (wordId: number): string => `vocab:del_word:${wordId}`;
 export const deactivateCategoryCallback = (categoryId: number): string =>
   `vocab:del_cat:${categoryId}`;
+export const voiceCategoryCallback = (categoryId: number, page = 0): string =>
+  `admin:vcat:${categoryId}:${page}`;
+export const voiceWordCallback = (wordId: number): string => `admin:vword:${wordId}`;
+export const voiceDeleteCallback = (wordId: number): string => `admin:vdel:${wordId}`;
+export const voiceNextCallback = (categoryId: number, afterWordId: number): string =>
+  `admin:vnext:${categoryId}:${afterWordId}`;
 
 export function mainMenuKeyboard(isAdmin: boolean): InlineKeyboard {
   const keyboard = new InlineKeyboard()

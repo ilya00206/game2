@@ -68,6 +68,18 @@ export interface CardView {
   options: TestOption[] | null;
   /** Итог по уже отвеченным вопросам теста по порядку позиций; null для FLASHCARDS. */
   testResults: boolean[] | null;
+  /** Озвучка польского слова, если админ её записал. */
+  voiceFileId: string | null;
+}
+
+/** Экран «правильный ответ» после «Не знаю» или ввода с клавиатуры. */
+export interface RevealView {
+  promptText: string;
+  translationText: string;
+  direction: Direction;
+  answeredCount: number;
+  plannedCount: number;
+  voiceFileId: string | null;
 }
 
 export interface ActiveSessionView {
@@ -93,28 +105,14 @@ export type AnswerResult =
       accepted: true;
       completed: false;
       card: CardView;
-      reveal:
-        | {
-            promptText: string;
-            translationText: string;
-            direction: Direction;
-            answeredCount: number;
-            plannedCount: number;
-          }
-        | null;
+      reveal: RevealView | null;
     }
   | {
       accepted: true;
       completed: true;
       sessionId: number;
       summary: CompletionSummary;
-      reveal: {
-        promptText: string;
-        translationText: string;
-        direction: Direction;
-        answeredCount: number;
-        plannedCount: number;
-      } | null;
+      reveal: RevealView | null;
     };
 
 /** Результат режима «Написание»: всегда показывает правильный ответ (§4.2). */
@@ -124,13 +122,7 @@ export type TypedAnswerResult =
       accepted: true;
       completed: false;
       isCorrect: boolean;
-      reveal: {
-        promptText: string;
-        translationText: string;
-        direction: Direction;
-        answeredCount: number;
-        plannedCount: number;
-      };
+      reveal: RevealView;
     }
   | {
       accepted: true;
@@ -138,13 +130,7 @@ export type TypedAnswerResult =
       isCorrect: boolean;
       sessionId: number;
       summary: CompletionSummary;
-      reveal: {
-        promptText: string;
-        translationText: string;
-        direction: Direction;
-        answeredCount: number;
-        plannedCount: number;
-      };
+      reveal: RevealView;
     };
 
 /** Видимость контента: системное + собственное, чужое недоступно (§3.3). */
@@ -248,6 +234,7 @@ export class SessionService {
         shownAt: true,
         options: true,
         wordId: true,
+        word: { select: { voiceFileId: true } },
       },
     });
 
@@ -292,6 +279,7 @@ export class SessionService {
       answeredCount: session.answeredCount,
       plannedCount: session.plannedCount,
       testResults,
+      voiceFileId: card.word.voiceFileId,
     };
   }
 
@@ -430,6 +418,7 @@ export class SessionService {
         direction: Direction;
         answeredCount: number;
         plannedCount: number;
+        voiceFileId: string | null;
       }
   > {
     const now = this.deps.clock.now();
@@ -446,6 +435,7 @@ export class SessionService {
             shownAt: true,
             promptText: true,
             translationText: true,
+            word: { select: { voiceFileId: true } },
             session: {
               select: {
                 id: true,
@@ -576,6 +566,7 @@ export class SessionService {
           direction: (card.session.direction ?? 'PL_RU') as Direction,
           answeredCount,
           plannedCount: card.session.plannedCount,
+          voiceFileId: card.word.voiceFileId,
         };
       }),
     );
@@ -605,6 +596,7 @@ export class SessionService {
             direction: result.direction,
             answeredCount: result.answeredCount,
             plannedCount: result.plannedCount,
+            voiceFileId: result.voiceFileId,
           }
         : null;
 
@@ -655,6 +647,7 @@ export class SessionService {
       direction: result.direction,
       answeredCount: result.answeredCount,
       plannedCount: result.plannedCount,
+      voiceFileId: result.voiceFileId,
     };
 
     if (result.completed && result.summary) {

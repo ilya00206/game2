@@ -1,6 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import type { AppContext } from '../context.js';
-import type { CardView } from '../../core/learning/sessionService.js';
+import type { CardView, RevealView } from '../../core/learning/sessionService.js';
 import { escapeHtml } from '../../content/service.js';
 import {
   answerCallback,
@@ -11,7 +11,7 @@ import {
   optionCallback,
   typingCallback,
 } from '../keyboards.js';
-import { editOrReply } from '../ui.js';
+import { editOrReply, replyVoice } from '../ui.js';
 import { showMainMenu } from './menu.js';
 import { showCompletion } from './completion.js';
 
@@ -67,7 +67,16 @@ function cardKeyboard(card: CardView): InlineKeyboard {
 }
 
 export async function renderCard(ctx: AppContext, card: CardView): Promise<void> {
-  await editOrReply(ctx, cardText(card), cardKeyboard(card));
+  const text = cardText(card);
+  const keyboard = cardKeyboard(card);
+
+  // Озвучка звучит только когда польское слово уже на экране, иначе она подскажет ответ.
+  if (card.voiceFileId && card.direction === 'PL_RU') {
+    await replyVoice(ctx, card.voiceFileId, text, keyboard);
+    return;
+  }
+
+  await editOrReply(ctx, text, keyboard);
 }
 
 export async function showLearnMenu(ctx: AppContext): Promise<void> {
@@ -272,13 +281,7 @@ export async function handleAnswer(
 /** Показывает перевод в том же сообщении карточки, прежде чем перейти к следующей (§4.2). */
 async function showReveal(
   ctx: AppContext,
-  reveal: {
-    promptText: string;
-    translationText: string;
-    direction: CardView['direction'];
-    answeredCount: number;
-    plannedCount: number;
-  },
+  reveal: RevealView,
   canContinue = true,
 ): Promise<void> {
   const text = cardText(
@@ -292,6 +295,7 @@ async function showReveal(
       mode: 'FLASHCARDS',
       options: null,
       testResults: null,
+      voiceFileId: reveal.voiceFileId,
     },
     reveal.translationText,
   );
@@ -303,20 +307,17 @@ async function showReveal(
         .text('⏹️ Закончить', CALLBACK.sessionFinish)
     : backToMenuKeyboard();
 
+  // На экране ответа польское слово уже открыто, поэтому озвучка звучит всегда.
+  if (reveal.voiceFileId) {
+    await replyVoice(ctx, reveal.voiceFileId, text, keyboard);
+    return;
+  }
+
   await editOrReply(ctx, text, keyboard);
 }
 
 /** Ответ печатается текстом, поэтому и правильный, и неправильный вариант ведут дальше (§4.2). */
-function typedResultText(
-  reveal: {
-    promptText: string;
-    translationText: string;
-    direction: CardView['direction'];
-    answeredCount: number;
-    plannedCount: number;
-  },
-  isCorrect: boolean,
-): string {
+function typedResultText(reveal: RevealView, isCorrect: boolean): string {
   const flag = reveal.direction === 'PL_RU' ? '🇵🇱' : '🇷🇺';
   const header = isCorrect ? '✅ Правильно! Умница ❤️\n\n' : '📝 Правильный ответ:\n\n';
   const word = `${escapeHtml(reveal.promptText)} — ${escapeHtml(reveal.translationText)}`;
@@ -326,13 +327,7 @@ function typedResultText(
 
 async function showTypedResult(
   ctx: AppContext,
-  reveal: {
-    promptText: string;
-    translationText: string;
-    direction: CardView['direction'];
-    answeredCount: number;
-    plannedCount: number;
-  },
+  reveal: RevealView,
   isCorrect: boolean,
   canContinue = true,
 ): Promise<void> {
@@ -344,6 +339,11 @@ async function showTypedResult(
         .row()
         .text('⏹️ Закончить', CALLBACK.sessionFinish)
     : backToMenuKeyboard();
+
+  if (reveal.voiceFileId) {
+    await replyVoice(ctx, reveal.voiceFileId, text, keyboard);
+    return;
+  }
 
   await editOrReply(ctx, text, keyboard);
 }

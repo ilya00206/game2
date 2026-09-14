@@ -61,6 +61,7 @@ model Word {
   russian       String
   transcription String?
   example       String?
+  voiceFileId   String? // file_id голосового сообщения Telegram с произношением
   ownerId       Int?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
